@@ -562,6 +562,136 @@ class MainWindow:
         )
         self.total_balance_label.pack(pady=(0, 10))
 
+        # Accounts list section
+        accounts_title = ctk.CTkLabel(
+            balance_frame,
+            text="Click on any account to view ledger",
+            font=("Roboto", 14),
+            text_color="gray"
+        )
+        accounts_title.pack(pady=(10, 5))
+
+        # Scrollable accounts list
+        self.accounts_scroll = ctk.CTkScrollableFrame(
+            balance_frame,
+            fg_color="transparent",
+            height=200
+        )
+        self.accounts_scroll.pack(fill="x", padx=10, pady=(0, 15))
+
+        # Will be populated in load_accounts_list()
+
+    def load_accounts_list(self):
+        """Load and display clickable list of all accounts"""
+        # Clear existing
+        for widget in self.accounts_scroll.winfo_children():
+            widget.destroy()
+
+        # Get all companies and users
+        companies = self.db.get_all_companies()
+        users = self.db.get_all_users()
+
+        if not companies and not users:
+            no_data = ctk.CTkLabel(
+                self.accounts_scroll,
+                text="No accounts yet. Add companies or users first.",
+                font=("Roboto", 12),
+                text_color="gray"
+            )
+            no_data.pack(pady=20)
+            return
+
+        # Display companies
+        if companies:
+            companies_header = ctk.CTkLabel(
+                self.accounts_scroll,
+                text="🏢 Companies",
+                font=("Roboto", 13, "bold"),
+                anchor="w"
+            )
+            companies_header.pack(fill="x", pady=(5, 5), padx=5)
+
+            for company in companies:
+                self.create_account_card(company, 'company')
+
+        # Display users
+        if users:
+            users_header = ctk.CTkLabel(
+                self.accounts_scroll,
+                text="👤 Users",
+                font=("Roboto", 13, "bold"),
+                anchor="w"
+            )
+            users_header.pack(fill="x", pady=(15, 5), padx=5)
+
+            for user in users:
+                self.create_account_card(user, 'user')
+
+    def create_account_card(self, account: dict, account_type: str):
+        """Create a clickable account card"""
+        from utils.helpers import format_currency
+
+        card = ctk.CTkFrame(
+            self.accounts_scroll,
+            corner_radius=8,
+            fg_color=("gray90", "gray25"),
+            cursor="hand2"
+        )
+        card.pack(fill="x", pady=2, padx=5)
+
+        # Account info frame
+        info_frame = ctk.CTkFrame(card, fg_color="transparent")
+        info_frame.pack(fill="x", padx=10, pady=8)
+
+        # Account name
+        name_label = ctk.CTkLabel(
+            info_frame,
+            text=account['name'],
+            font=("Roboto", 13, "bold"),
+            anchor="w"
+        )
+        name_label.pack(side="left", fill="x", expand=True)
+
+        # Balance
+        balance = account['balance']
+        balance_color = "#2ecc71" if balance >= 0 else "#e74c3c"
+        balance_label = ctk.CTkLabel(
+            info_frame,
+            text=format_currency(balance),
+            font=("Roboto", 13, "bold"),
+            text_color=balance_color
+        )
+        balance_label.pack(side="right")
+
+        # Click handler
+        def on_click(e=None):
+            self.open_ledger(account_type, account['id'], account['name'])
+
+        card.bind("<Button-1>", on_click)
+        name_label.bind("<Button-1>", on_click)
+        balance_label.bind("<Button-1>", on_click)
+
+        # Hover effect
+        def on_enter(e):
+            card.configure(fg_color=("gray85", "gray30"))
+
+        def on_leave(e):
+            card.configure(fg_color=("gray90", "gray25"))
+
+        card.bind("<Enter>", on_enter)
+        card.bind("<Leave>", on_leave)
+
+    def open_ledger(self, entity_type: str, entity_id: int, entity_name: str):
+        """Open ledger window for an account"""
+        from gui.ledger_window import LedgerWindow
+        
+        try:
+            ledger_win = LedgerWindow(self.root, self.db, entity_type, entity_id, entity_name)
+            ledger_win.focus()
+        except Exception as e:
+            from tkinter import messagebox
+            messagebox.showerror("Error", f"Failed to open ledger: {str(e)}")
+
     def create_recent_transactions_panel(self, parent):
         """Create recent transactions panel"""
         trans_frame = ctk.CTkFrame(parent, corner_radius=10)
@@ -805,6 +935,7 @@ class MainWindow:
         """Load all data"""
         self.load_entity_lists()
         self.load_balances()
+        self.load_accounts_list()
         self.load_recent_transactions()
 
     def load_balances(self):

@@ -690,6 +690,72 @@ class DatabaseManager:
         results = self.execute_query(query, (entity_type, entity_id, entity_type, entity_id))
         return [dict(row) for row in results]
 
+    def get_account_ledger(self, entity_type: str, entity_id: int) -> List[Dict[str, Any]]:
+        """
+        Get ledger entries for an account with running balance
+        
+        Args:
+            entity_type: 'company' or 'user'
+            entity_id: ID of the entity
+            
+        Returns:
+            List of transactions with type (Debit/Credit) and running balance
+        """
+        # Get all transactions for this entity
+        transactions = self.get_transactions_by_entity(entity_type, entity_id)
+        
+        # Sort by date (oldest first) to calculate running balance
+        transactions.sort(key=lambda x: (x['transaction_date'], x['created_date']))
+        
+        # Get starting balance (should be 0 for new accounts)
+        if entity_type == 'company':
+            entity = self.get_company(entity_id)
+        else:
+            entity = self.get_user(entity_id)
+        
+        # Calculate running balance
+        running_balance = 0.0
+        ledger_entries = []
+        
+        for trans in transactions:
+            # Determine if this is a debit or credit for this account
+            is_credit = (trans['to_type'] == entity_type and trans['to_id'] == entity_id)
+            is_debit = (trans['from_type'] == entity_type and trans['from_id'] == entity_id)
+            
+            if is_credit:
+                # Money coming in (credit)
+                running_balance += trans['amount']
+                trans_type = 'Credit'
+                other_party = trans['from_name'] if trans['from_type'] != 'cash' else 'Cash Deposit'
+            else:
+                # Money going out (debit)
+                running_balance -= trans['amount']
+                trans_type = 'Debit'
+                other_party = trans['to_name'] if trans['to_type'] != 'cash' else 'Cash Withdrawal'
+            
+            # Add ledger entry
+            ledger_entry = {
+                'id': trans['id'],
+                'date': trans['transaction_date'],
+                'type': trans_type,
+                'description': trans['description'] or '',
+                'reference': trans['reference'] or '',
+                'other_party': other_party,
+                'amount': trans['amount'],
+                'running_balance': running_balance,
+                'from_name': trans['from_name'],
+                'to_name': trans['to_name'],
+                'from_type': trans['from_type'],
+                'to_type': trans['to_type'],
+                'created_date': trans['created_date']
+            }
+            ledger_entries.append(ledger_entry)
+        
+        # Reverse to show newest first
+        ledger_entries.reverse()
+        
+        return ledger_entries
+
     def delete_transaction(self, transaction_id: int) -> int:
         """
         Delete a transaction and reverse balance changes
