@@ -1,0 +1,610 @@
+"""
+Main Window - Primary application interface
+"""
+
+import customtkinter as ctk
+from tkinter import messagebox
+from datetime import datetime
+from typing import Optional
+
+from database.db_manager import DatabaseManager
+from utils.helpers import format_currency, format_date, validate_amount, get_current_date
+
+
+class MainWindow:
+    """Main application window with modern CustomTkinter design"""
+
+    def __init__(self, root: ctk.CTk, db: DatabaseManager):
+        """
+        Initialize main window
+
+        Args:
+            root: CTk root window
+            db: Database manager instance
+        """
+        self.root = root
+        self.db = db
+
+        # Create main layout
+        self.create_menu_bar()
+        self.create_main_layout()
+        self.load_data()
+
+    def create_menu_bar(self):
+        """Create menu bar"""
+        # Create menu frame at top
+        menu_frame = ctk.CTkFrame(self.root, height=40, corner_radius=0)
+        menu_frame.pack(fill="x", padx=0, pady=0)
+
+        # Menu buttons
+        menu_items = [
+            ("🏠 Dashboard", self.show_dashboard),
+            ("🏢 Companies", self.open_company_dialog),
+            ("👤 Users", self.open_user_dialog),
+            ("💸 Transactions", self.open_transaction_dialog),
+            ("📊 Reports", self.open_reports_window),
+            ("⚙️ Settings", self.show_settings),
+        ]
+
+        for text, command in menu_items:
+            btn = ctk.CTkButton(
+                menu_frame,
+                text=text,
+                width=120,
+                height=35,
+                corner_radius=8,
+                command=command,
+                fg_color="transparent",
+                hover_color=("gray75", "gray25")
+            )
+            btn.pack(side="left", padx=5, pady=2)
+
+        # Theme toggle button on the right
+        self.theme_btn = ctk.CTkButton(
+            menu_frame,
+            text="🌙 Dark",
+            width=100,
+            height=35,
+            corner_radius=8,
+            command=self.toggle_theme,
+            fg_color="transparent",
+            hover_color=("gray75", "gray25")
+        )
+        self.theme_btn.pack(side="right", padx=5, pady=2)
+
+    def create_main_layout(self):
+        """Create main application layout"""
+        # Main container
+        main_container = ctk.CTkFrame(self.root, corner_radius=0)
+        main_container.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # Create three-column layout
+        # Left column: Quick transaction entry (40%)
+        left_frame = ctk.CTkFrame(main_container, corner_radius=10)
+        left_frame.pack(side="left", fill="both", expand=True, padx=(0, 5))
+
+        # Right column: Balance overview and recent transactions (60%)
+        right_frame = ctk.CTkFrame(main_container, corner_radius=10)
+        right_frame.pack(side="right", fill="both", expand=True, padx=(5, 0))
+
+        # Build left column: Transaction entry
+        self.create_transaction_entry_panel(left_frame)
+
+        # Build right column: Split into top (balances) and bottom (recent transactions)
+        self.create_balance_panel(right_frame)
+        self.create_recent_transactions_panel(right_frame)
+
+    def create_transaction_entry_panel(self, parent):
+        """Create quick transaction entry panel"""
+        # Title
+        title = ctk.CTkLabel(
+            parent,
+            text="Quick Transaction Entry",
+            font=("Roboto", 24, "bold")
+        )
+        title.pack(pady=(20, 10))
+
+        # Form container
+        form_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        form_frame.pack(fill="both", expand=True, padx=20, pady=10)
+
+        # Date field
+        date_label = ctk.CTkLabel(form_frame, text="Date:", font=("Roboto", 14))
+        date_label.pack(anchor="w", pady=(10, 5))
+
+        self.date_entry = ctk.CTkEntry(
+            form_frame,
+            placeholder_text="YYYY-MM-DD",
+            height=40,
+            font=("Roboto", 14)
+        )
+        self.date_entry.pack(fill="x", pady=(0, 15))
+        self.date_entry.insert(0, get_current_date())
+
+        # Amount field
+        amount_label = ctk.CTkLabel(form_frame, text="Amount:", font=("Roboto", 14))
+        amount_label.pack(anchor="w", pady=(10, 5))
+
+        self.amount_entry = ctk.CTkEntry(
+            form_frame,
+            placeholder_text="0.00",
+            height=40,
+            font=("Roboto", 14)
+        )
+        self.amount_entry.pack(fill="x", pady=(0, 15))
+
+        # From selection
+        from_label = ctk.CTkLabel(form_frame, text="From:", font=("Roboto", 14))
+        from_label.pack(anchor="w", pady=(10, 5))
+
+        self.from_combo = ctk.CTkComboBox(
+            form_frame,
+            height=40,
+            font=("Roboto", 14),
+            values=["Select..."],
+            state="readonly"
+        )
+        self.from_combo.pack(fill="x", pady=(0, 15))
+
+        # Make entire "From" combobox clickable (not just arrow)
+        try:
+            # Bind click event to the entry part to open dropdown
+            self.from_combo._entry.bind("<Button-1>", lambda e: self.from_combo._dropdown_callback())
+            self.from_combo._entry.configure(cursor="hand2")  # Change cursor to indicate clickable
+        except:
+            pass  # Fallback if internal structure changes
+
+        # To selection
+        to_label = ctk.CTkLabel(form_frame, text="To:", font=("Roboto", 14))
+        to_label.pack(anchor="w", pady=(10, 5))
+
+        self.to_combo = ctk.CTkComboBox(
+            form_frame,
+            height=40,
+            font=("Roboto", 14),
+            values=["Select..."],
+            state="readonly"
+        )
+        self.to_combo.pack(fill="x", pady=(0, 15))
+
+        # Make entire "To" combobox clickable (not just arrow)
+        try:
+            # Bind click event to the entry part to open dropdown
+            self.to_combo._entry.bind("<Button-1>", lambda e: self.to_combo._dropdown_callback())
+            self.to_combo._entry.configure(cursor="hand2")  # Change cursor to indicate clickable
+        except:
+            pass  # Fallback if internal structure changes
+
+        # Description field
+        desc_label = ctk.CTkLabel(form_frame, text="Description (Optional):", font=("Roboto", 14))
+        desc_label.pack(anchor="w", pady=(10, 5))
+
+        self.desc_entry = ctk.CTkEntry(
+            form_frame,
+            placeholder_text="Transaction description",
+            height=40,
+            font=("Roboto", 14)
+        )
+        self.desc_entry.pack(fill="x", pady=(0, 15))
+
+        # Reference field
+        ref_label = ctk.CTkLabel(form_frame, text="Reference (Optional):", font=("Roboto", 14))
+        ref_label.pack(anchor="w", pady=(10, 5))
+
+        self.ref_entry = ctk.CTkEntry(
+            form_frame,
+            placeholder_text="Reference number",
+            height=40,
+            font=("Roboto", 14)
+        )
+        self.ref_entry.pack(fill="x", pady=(0, 20))
+
+        # Submit button
+        submit_btn = ctk.CTkButton(
+            form_frame,
+            text="Submit Transaction",
+            height=50,
+            font=("Roboto", 16, "bold"),
+            corner_radius=10,
+            command=self.submit_transaction
+        )
+        submit_btn.pack(fill="x", pady=(10, 20))
+
+        # Clear button
+        clear_btn = ctk.CTkButton(
+            form_frame,
+            text="Clear Form",
+            height=40,
+            font=("Roboto", 14),
+            corner_radius=10,
+            fg_color="gray",
+            hover_color="darkgray",
+            command=self.clear_form
+        )
+        clear_btn.pack(fill="x")
+
+    def create_balance_panel(self, parent):
+        """Create balance overview panel"""
+        balance_frame = ctk.CTkFrame(parent, corner_radius=10)
+        balance_frame.pack(fill="x", padx=20, pady=(20, 10))
+
+        # Title
+        title = ctk.CTkLabel(
+            balance_frame,
+            text="Balance Overview",
+            font=("Roboto", 20, "bold")
+        )
+        title.pack(pady=(15, 10))
+
+        # Balance cards container
+        cards_container = ctk.CTkFrame(balance_frame, fg_color="transparent")
+        cards_container.pack(fill="x", padx=10, pady=(0, 15))
+
+        # Company balance card
+        company_card = ctk.CTkFrame(cards_container, corner_radius=8)
+        company_card.pack(side="left", fill="both", expand=True, padx=5)
+
+        ctk.CTkLabel(
+            company_card,
+            text="Companies",
+            font=("Roboto", 14)
+        ).pack(pady=(10, 5))
+
+        self.company_balance_label = ctk.CTkLabel(
+            company_card,
+            text="₹0.00",
+            font=("Roboto", 24, "bold"),
+            text_color="green"
+        )
+        self.company_balance_label.pack(pady=(0, 10))
+
+        # User balance card
+        user_card = ctk.CTkFrame(cards_container, corner_radius=8)
+        user_card.pack(side="left", fill="both", expand=True, padx=5)
+
+        ctk.CTkLabel(
+            user_card,
+            text="Users",
+            font=("Roboto", 14)
+        ).pack(pady=(10, 5))
+
+        self.user_balance_label = ctk.CTkLabel(
+            user_card,
+            text="₹0.00",
+            font=("Roboto", 24, "bold"),
+            text_color="green"
+        )
+        self.user_balance_label.pack(pady=(0, 10))
+
+        # Total balance card
+        total_card = ctk.CTkFrame(cards_container, corner_radius=8, fg_color=("lightblue", "darkblue"))
+        total_card.pack(side="left", fill="both", expand=True, padx=5)
+
+        ctk.CTkLabel(
+            total_card,
+            text="Total",
+            font=("Roboto", 14, "bold")
+        ).pack(pady=(10, 5))
+
+        self.total_balance_label = ctk.CTkLabel(
+            total_card,
+            text="₹0.00",
+            font=("Roboto", 24, "bold")
+        )
+        self.total_balance_label.pack(pady=(0, 10))
+
+    def create_recent_transactions_panel(self, parent):
+        """Create recent transactions panel"""
+        trans_frame = ctk.CTkFrame(parent, corner_radius=10)
+        trans_frame.pack(fill="both", expand=True, padx=20, pady=(10, 20))
+
+        # Header with title and refresh button
+        header = ctk.CTkFrame(trans_frame, fg_color="transparent")
+        header.pack(fill="x", padx=15, pady=(15, 10))
+
+        title = ctk.CTkLabel(
+            header,
+            text="Recent Transactions",
+            font=("Roboto", 20, "bold")
+        )
+        title.pack(side="left")
+
+        refresh_btn = ctk.CTkButton(
+            header,
+            text="🔄 Refresh",
+            width=100,
+            height=30,
+            corner_radius=8,
+            command=self.refresh_data
+        )
+        refresh_btn.pack(side="right")
+
+        # Scrollable frame for transactions
+        self.trans_scroll = ctk.CTkScrollableFrame(
+            trans_frame,
+            corner_radius=8,
+            fg_color="transparent"
+        )
+        self.trans_scroll.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+
+    def load_entity_lists(self):
+        """Load companies and users into dropdown lists"""
+        # Get all companies and users
+        companies = self.db.get_all_companies()
+        users = self.db.get_all_users()
+
+        # Build entity list with type prefix
+        entities = []
+        for company in companies:
+            entities.append(f"[Company] {company['name']}")
+
+        for user in users:
+            company_name = ""
+            if user['company_id']:
+                company = self.db.get_company(user['company_id'])
+                if company:
+                    company_name = f" ({company['name']})"
+            entities.append(f"[User] {user['name']}{company_name}")
+
+        if not entities:
+            entities = ["No entities available - Add companies/users first"]
+
+        # Update combo boxes
+        self.from_combo.configure(values=entities)
+        self.to_combo.configure(values=entities)
+
+        if len(entities) > 0:
+            self.from_combo.set(entities[0])
+            self.to_combo.set(entities[0])
+
+    def parse_entity_selection(self, selection: str) -> tuple:
+        """
+        Parse entity selection from dropdown
+
+        Returns:
+            Tuple of (entity_type, entity_id, entity_name)
+        """
+        if not selection or "No entities" in selection:
+            return None, None, None
+
+        # Extract type
+        if selection.startswith("[Company]"):
+            entity_type = "company"
+            name_part = selection.replace("[Company]", "").strip()
+        elif selection.startswith("[User]"):
+            entity_type = "user"
+            name_part = selection.replace("[User]", "").strip()
+            # Remove company name in parentheses
+            if "(" in name_part:
+                name_part = name_part[:name_part.index("(")].strip()
+        else:
+            return None, None, None
+
+        # Find entity ID by name
+        if entity_type == "company":
+            companies = self.db.get_all_companies()
+            for company in companies:
+                if company['name'] == name_part:
+                    return entity_type, company['id'], company['name']
+        else:
+            users = self.db.get_all_users()
+            for user in users:
+                if user['name'] == name_part:
+                    return entity_type, user['id'], user['name']
+
+        return None, None, None
+
+    def submit_transaction(self):
+        """Submit new transaction"""
+        # Validate inputs
+        date = self.date_entry.get().strip()
+        if not date:
+            messagebox.showerror("Error", "Please enter a transaction date")
+            return
+
+        amount_str = self.amount_entry.get().strip()
+        is_valid, amount = validate_amount(amount_str)
+        if not is_valid:
+            messagebox.showerror("Error", "Please enter a valid positive amount")
+            return
+
+        # Parse entities
+        from_type, from_id, from_name = self.parse_entity_selection(self.from_combo.get())
+        to_type, to_id, to_name = self.parse_entity_selection(self.to_combo.get())
+
+        if not from_type or not to_type:
+            messagebox.showerror("Error", "Please select valid sender and receiver")
+            return
+
+        if from_type == to_type and from_id == to_id:
+            messagebox.showerror("Error", "Sender and receiver cannot be the same")
+            return
+
+        # Get optional fields
+        description = self.desc_entry.get().strip()
+        reference = self.ref_entry.get().strip()
+
+        # Confirm transaction
+        confirm_msg = (
+            f"Submit transaction?\n\n"
+            f"From: {from_name}\n"
+            f"To: {to_name}\n"
+            f"Amount: {format_currency(amount)}\n"
+            f"Date: {date}"
+        )
+
+        if not messagebox.askyesno("Confirm Transaction", confirm_msg):
+            return
+
+        # Add transaction
+        try:
+            self.db.add_transaction(
+                transaction_date=date,
+                amount=amount,
+                from_type=from_type,
+                from_id=from_id,
+                to_type=to_type,
+                to_id=to_id,
+                description=description,
+                reference=reference
+            )
+
+            messagebox.showinfo("Success", "Transaction added successfully!")
+            self.clear_form()
+            self.refresh_data()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to add transaction: {str(e)}")
+
+    def clear_form(self):
+        """Clear transaction entry form"""
+        self.date_entry.delete(0, "end")
+        self.date_entry.insert(0, get_current_date())
+        self.amount_entry.delete(0, "end")
+        self.desc_entry.delete(0, "end")
+        self.ref_entry.delete(0, "end")
+
+    def load_data(self):
+        """Load all data"""
+        self.load_entity_lists()
+        self.load_balances()
+        self.load_recent_transactions()
+
+    def load_balances(self):
+        """Load and display balance information"""
+        balances = self.db.get_total_balances()
+
+        company_total = balances['company_total']
+        user_total = balances['user_total']
+        grand_total = balances['grand_total']
+
+        self.company_balance_label.configure(text=format_currency(company_total))
+        self.user_balance_label.configure(text=format_currency(user_total))
+        self.total_balance_label.configure(text=format_currency(grand_total))
+
+    def load_recent_transactions(self, limit: int = 10):
+        """Load and display recent transactions"""
+        # Clear existing transactions
+        for widget in self.trans_scroll.winfo_children():
+            widget.destroy()
+
+        # Get recent transactions
+        transactions = self.db.get_all_transactions(limit=limit)
+
+        if not transactions:
+            no_data_label = ctk.CTkLabel(
+                self.trans_scroll,
+                text="No transactions yet",
+                font=("Roboto", 14),
+                text_color="gray"
+            )
+            no_data_label.pack(pady=20)
+            return
+
+        # Display each transaction
+        for trans in transactions:
+            trans_card = self.create_transaction_card(self.trans_scroll, trans)
+            trans_card.pack(fill="x", pady=5)
+
+    def create_transaction_card(self, parent, trans: dict) -> ctk.CTkFrame:
+        """Create a transaction display card"""
+        card = ctk.CTkFrame(parent, corner_radius=8)
+
+        # Main info
+        info_frame = ctk.CTkFrame(card, fg_color="transparent")
+        info_frame.pack(fill="x", padx=15, pady=10)
+
+        # Left: From -> To
+        left_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
+        left_frame.pack(side="left", fill="both", expand=True)
+
+        from_to_text = f"{trans['from_name']} → {trans['to_name']}"
+        ctk.CTkLabel(
+            left_frame,
+            text=from_to_text,
+            font=("Roboto", 14, "bold"),
+            anchor="w"
+        ).pack(anchor="w")
+
+        date_text = format_date(trans['transaction_date'], "%Y-%m-%d", "%b %d, %Y")
+        ctk.CTkLabel(
+            left_frame,
+            text=date_text,
+            font=("Roboto", 11),
+            text_color="gray",
+            anchor="w"
+        ).pack(anchor="w")
+
+        # Right: Amount
+        amount_label = ctk.CTkLabel(
+            info_frame,
+            text=format_currency(trans['amount']),
+            font=("Roboto", 18, "bold"),
+            text_color="green"
+        )
+        amount_label.pack(side="right", padx=10)
+
+        # Description if available
+        if trans['description']:
+            desc_label = ctk.CTkLabel(
+                card,
+                text=f"📝 {trans['description']}",
+                font=("Roboto", 11),
+                text_color="gray",
+                anchor="w"
+            )
+            desc_label.pack(anchor="w", padx=15, pady=(0, 10))
+
+        return card
+
+    def refresh_data(self):
+        """Refresh all data displays"""
+        self.load_data()
+
+    def toggle_theme(self):
+        """Toggle between dark and light themes"""
+        current_mode = ctk.get_appearance_mode()
+        new_mode = "light" if current_mode == "Dark" else "dark"
+
+        ctk.set_appearance_mode(new_mode)
+
+        # Update button text
+        if new_mode == "dark":
+            self.theme_btn.configure(text="🌙 Dark")
+        else:
+            self.theme_btn.configure(text="☀️ Light")
+
+    # Placeholder methods for menu buttons
+    def show_dashboard(self):
+        """Show dashboard (current view)"""
+        self.refresh_data()
+
+    def open_company_dialog(self):
+        """Open company management dialog"""
+        from gui.company_dialog import CompanyDialog
+        dialog = CompanyDialog(self.root, self.db)
+        self.root.wait_window(dialog.dialog)
+        self.refresh_data()
+
+    def open_user_dialog(self):
+        """Open user management dialog"""
+        from gui.user_dialog import UserDialog
+        dialog = UserDialog(self.root, self.db)
+        self.root.wait_window(dialog.dialog)
+        self.refresh_data()
+
+    def open_transaction_dialog(self):
+        """Open transaction management dialog"""
+        from gui.transaction_dialog import TransactionDialog
+        dialog = TransactionDialog(self.root, self.db)
+        self.root.wait_window(dialog.dialog)
+        self.refresh_data()
+
+    def open_reports_window(self):
+        """Open reports window"""
+        from gui.reports_window import ReportsWindow
+        ReportsWindow(self.root, self.db)
+
+    def show_settings(self):
+        """Show settings dialog"""
+        messagebox.showinfo("Settings", "Settings feature coming soon!")
