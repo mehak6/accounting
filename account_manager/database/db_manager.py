@@ -155,8 +155,9 @@ class DatabaseManager:
             self.connection.rollback()
             raise
 
-        # Run migration to fix email unique constraint
+        # Run migrations
         self.migrate_remove_email_unique_constraint()
+        self.migrate_add_cash_transaction_support()
 
     def migrate_remove_email_unique_constraint(self):
         """
@@ -204,6 +205,60 @@ class DatabaseManager:
 
                 self.connection.commit()
                 print("Migration completed: Email field is now optional and non-unique")
+
+        except sqlite3.Error as e:
+            print(f"Migration info: {e}")
+            # If migration fails, it's probably already migrated or a new database
+            self.connection.rollback()
+
+    def migrate_add_cash_transaction_support(self):
+        """
+        Migration: Update transactions table to support 'cash' type for deposits/withdrawals
+        This allows from_type and to_type to be 'cash' in addition to 'company' and 'user'
+        """
+        cursor = self.connection.cursor()
+
+        try:
+            # Check if the transactions table has the old CHECK constraint
+            cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='transactions'")
+            result = cursor.fetchone()
+
+            if result and "CHECK (from_type IN ('company', 'user'))" in result[0]:
+                print("Migrating database: Adding 'cash' support to transactions table...")
+
+                # Step 1: Create new transactions table with updated constraints
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS transactions_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        transaction_date DATE NOT NULL,
+                        amount REAL NOT NULL CHECK (amount > 0),
+                        from_type TEXT NOT NULL CHECK (from_type IN ('company', 'user', 'cash')),
+                        from_id INTEGER NOT NULL,
+                        to_type TEXT NOT NULL CHECK (to_type IN ('company', 'user', 'cash')),
+                        to_id INTEGER NOT NULL,
+                        description TEXT,
+                        reference TEXT,
+                        created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+
+                # Step 2: Copy data from old table to new table
+                cursor.execute("""
+                    INSERT INTO transactions_new (id, transaction_date, amount, from_type, from_id, 
+                                                   to_type, to_id, description, reference, created_date)
+                    SELECT id, transaction_date, amount, from_type, from_id, 
+                           to_type, to_id, description, reference, created_date
+                    FROM transactions
+                """)
+
+                # Step 3: Drop old table
+                cursor.execute("DROP TABLE transactions")
+
+                # Step 4: Rename new table to transactions
+                cursor.execute("ALTER TABLE transactions_new RENAME TO transactions")
+
+                self.connection.commit()
+                print("Migration completed: Transactions table now supports cash deposits/withdrawals")
 
         except sqlite3.Error as e:
             print(f"Migration info: {e}")
@@ -448,6 +503,118 @@ class DatabaseManager:
         except Exception as e:
             self.connection.rollback()
             raise Exception(f"Failed to add transaction: {e}")
+
+    def deposit(self, entity_type: str, entity_id: int, amount: float, description: str = "Cash Deposit") -> int:
+        """
+        Deposit money to an account (add balance)
+        
+        Args:
+            entity_type: 'company' or 'user'
+            entity_id: ID of the entity
+            amount: Amount to deposit (must be positive)
+            description: Description of the deposit
+            
+        Returns:
+            Transaction ID
+        """
+        if amount <= 0:
+            raise ValueError("Deposit amount must be positive")
+        
+        if entity_type not in ['company', 'user']:
+            raise ValueError("Entity type must be 'company' or 'user'")
+        
+        cursor = self.connection.cursor()
+        
+        try:
+            # Create a transaction record for audit trail
+            # Use a special "from" to indicate external deposit
+            # We'll use from_type='cash' and from_id=0 to indicate cash deposit
+            query = """
+                INSERT INTO transactions
+                (transaction_date, amount, from_type, from_id, to_type, to_id,
+                 description, reference)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            transaction_id = self.execute_update(
+                query,
+                (datetime.now().strftime('%Y-%m-%d'), amount, 'cash', 0, entity_type, entity_id,
+                 description, 'DEPOSIT')
+            )
+            
+            # Update balance
+            if entity_type == 'company':
+                self.update_company_balance(entity_id, amount)
+            else:
+                self.update_user_balance(entity_id, amount)
+            
+            self.connection.commit()
+            return transaction_id
+            
+        except Exception as e:
+            self.connection.rollback()
+            raise Exception(f"Failed to deposit: {e}")
+
+    def withdraw(self, entity_type: str, entity_id: int, amount: float, description: str = "Cash Withdrawal") -> int:
+        """
+        Withdraw money from an account (subtract balance)
+        
+        Args:
+            entity_type: 'company' or 'user'
+            entity_id: ID of the entity
+            amount: Amount to withdraw (must be positive)
+            description: Description of the withdrawal
+            
+        Returns:
+            Transaction ID
+        """
+        if amount <= 0:
+            raise ValueError("Withdrawal amount must be positive")
+        
+        if entity_type not in ['company', 'user']:
+            raise ValueError("Entity type must be 'company' or 'user'")
+        
+        # Check balance
+        if entity_type == 'company':
+            entity = self.get_company(entity_id)
+        else:
+            entity = self.get_user(entity_id)
+        
+        if not entity:
+            raise Exception(f"Entity not found: {entity_type} id {entity_id}")
+        
+        if entity['balance'] < amount:
+            raise Exception(f"Insufficient balance: {entity['balance']} < {amount}")
+        
+        cursor = self.connection.cursor()
+        
+        try:
+            # Create a transaction record for audit trail
+            # Use a special "to" to indicate external withdrawal
+            # We'll use to_type='cash' and to_id=0 to indicate cash withdrawal
+            query = """
+                INSERT INTO transactions
+                (transaction_date, amount, from_type, from_id, to_type, to_id,
+                 description, reference)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            transaction_id = self.execute_update(
+                query,
+                (datetime.now().strftime('%Y-%m-%d'), amount, entity_type, entity_id, 'cash', 0,
+                 description, 'WITHDRAW')
+            )
+            
+            # Update balance
+            if entity_type == 'company':
+                self.update_company_balance(entity_id, -amount)
+            else:
+                self.update_user_balance(entity_id, -amount)
+            
+            self.connection.commit()
+            return transaction_id
+            
+        except Exception as e:
+            self.connection.rollback()
+            raise Exception(f"Failed to withdraw: {e}")
 
     def get_transaction(self, transaction_id: int) -> Optional[Dict[str, Any]]:
         """Get transaction by ID with sender and receiver names"""

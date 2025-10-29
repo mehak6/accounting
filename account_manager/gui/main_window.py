@@ -174,8 +174,9 @@ class MainWindow:
         right_frame = ctk.CTkFrame(main_container, corner_radius=10)
         right_frame.pack(side="right", fill="both", expand=True, padx=(5, 0))
 
-        # Build left column: Transaction entry
+        # Build left column: Transaction entry and Deposit/Withdraw
         self.create_transaction_entry_panel(left_frame)
+        self.create_deposit_withdraw_panel(left_frame)
 
         # Build right column: Split into top (balances) and bottom (recent transactions)
         self.create_balance_panel(right_frame)
@@ -313,6 +314,184 @@ class MainWindow:
         )
         clear_btn.pack(fill="x")
 
+    def create_deposit_withdraw_panel(self, parent):
+        """Create deposit/withdraw panel for cash in/out operations"""
+        # Main frame
+        dw_frame = ctk.CTkFrame(parent, corner_radius=10)
+        dw_frame.pack(fill="x", padx=20, pady=(20, 0))
+
+        # Title
+        title = ctk.CTkLabel(
+            dw_frame,
+            text="💰 Cash Deposit / Withdraw",
+            font=("Roboto", 18, "bold")
+        )
+        title.pack(pady=(20, 10))
+
+        # Description
+        desc = ctk.CTkLabel(
+            dw_frame,
+            text="Add or remove cash from accounts",
+            font=("Roboto", 12),
+            text_color="gray"
+        )
+        desc.pack(pady=(0, 20))
+
+        # Form frame
+        form_frame = ctk.CTkFrame(dw_frame, fg_color="transparent")
+        form_frame.pack(fill="x", padx=20, pady=(0, 20))
+
+        # Operation type (Deposit or Withdraw)
+        op_label = ctk.CTkLabel(form_frame, text="Operation:", font=("Roboto", 14))
+        op_label.pack(anchor="w", pady=(0, 5))
+
+        self.operation_var = ctk.StringVar(value="deposit")
+        
+        op_radio_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
+        op_radio_frame.pack(fill="x", pady=(0, 15))
+
+        deposit_radio = ctk.CTkRadioButton(
+            op_radio_frame,
+            text="💵 Deposit (Add Money)",
+            variable=self.operation_var,
+            value="deposit",
+            font=("Roboto", 13)
+        )
+        deposit_radio.pack(side="left", padx=(0, 20))
+
+        withdraw_radio = ctk.CTkRadioButton(
+            op_radio_frame,
+            text="💸 Withdraw (Remove Money)",
+            variable=self.operation_var,
+            value="withdraw",
+            font=("Roboto", 13)
+        )
+        withdraw_radio.pack(side="left")
+
+        # Entity selection
+        entity_label = ctk.CTkLabel(form_frame, text="Select Account:", font=("Roboto", 14))
+        entity_label.pack(anchor="w", pady=(10, 5))
+
+        self.dw_entity_combo = ctk.CTkComboBox(
+            form_frame,
+            height=40,
+            font=("Roboto", 14),
+            values=["Select..."],
+            state="readonly"
+        )
+        self.dw_entity_combo.pack(fill="x", pady=(0, 15))
+
+        # Make dropdown clickable anywhere
+        try:
+            self.dw_entity_combo._entry.bind("<Button-1>", lambda e: self.dw_entity_combo._dropdown_callback())
+            self.dw_entity_combo._entry.configure(cursor="hand2")
+        except:
+            pass
+
+        # Amount field
+        amount_label = ctk.CTkLabel(form_frame, text="Amount:", font=("Roboto", 14))
+        amount_label.pack(anchor="w", pady=(10, 5))
+
+        self.dw_amount_entry = ctk.CTkEntry(
+            form_frame,
+            placeholder_text="0.00",
+            height=40,
+            font=("Roboto", 14)
+        )
+        self.dw_amount_entry.pack(fill="x", pady=(0, 15))
+
+        # Bind formatting event
+        self.dw_amount_entry.bind("<KeyRelease>", self.format_dw_amount_input)
+
+        # Description field
+        desc_label = ctk.CTkLabel(form_frame, text="Description (Optional):", font=("Roboto", 14))
+        desc_label.pack(anchor="w", pady=(10, 5))
+
+        self.dw_desc_entry = ctk.CTkEntry(
+            form_frame,
+            placeholder_text="Purpose of deposit/withdrawal",
+            height=40,
+            font=("Roboto", 14)
+        )
+        self.dw_desc_entry.pack(fill="x", pady=(0, 15))
+
+        # Submit button
+        submit_btn = ctk.CTkButton(
+            form_frame,
+            text="Submit",
+            height=50,
+            font=("Roboto", 16, "bold"),
+            corner_radius=10,
+            command=self.submit_deposit_withdraw,
+            fg_color="#2ecc71",
+            hover_color="#27ae60"
+        )
+        submit_btn.pack(fill="x", pady=(10, 0))
+
+    def format_dw_amount_input(self, event=None):
+        """Format deposit/withdraw amount input in Indian numbering style"""
+        try:
+            cursor_pos = self.dw_amount_entry.index("insert")
+            current_value = self.dw_amount_entry.get()
+            
+            clean_value = ''.join(c for c in current_value if c.isdigit() or c == '.')
+            
+            if not clean_value or clean_value == '.':
+                return
+            
+            if '.' in clean_value:
+                parts = clean_value.split('.')
+                integer_part = parts[0]
+                decimal_part = parts[1][:2] if len(parts) > 1 else ''
+            else:
+                integer_part = clean_value
+                decimal_part = ''
+            
+            if integer_part:
+                reversed_num = integer_part[::-1]
+                groups = []
+                groups.append(reversed_num[:3])
+                remaining = reversed_num[3:]
+                
+                while remaining:
+                    groups.append(remaining[:2])
+                    remaining = remaining[2:]
+                
+                formatted = ','.join(groups)
+                formatted = formatted[::-1]
+            else:
+                formatted = '0'
+            
+            if decimal_part or '.' in current_value:
+                formatted = f"{formatted}.{decimal_part}"
+            
+            commas_before = current_value[:cursor_pos].count(',')
+            clean_cursor_pos = cursor_pos - commas_before
+            
+            self.dw_amount_entry.delete(0, "end")
+            self.dw_amount_entry.insert(0, formatted)
+            
+            try:
+                new_pos = 0
+                char_count = 0
+                for i, char in enumerate(formatted):
+                    if char != ',':
+                        char_count += 1
+                    if char_count >= clean_cursor_pos:
+                        new_pos = i + 1
+                        break
+                else:
+                    new_pos = len(formatted)
+                
+                self.dw_amount_entry.icursor(new_pos)
+            except:
+                pass
+        
+        except Exception as e:
+            pass
+        
+        return "break"
+
     def create_balance_panel(self, parent):
         """Create balance overview panel"""
         balance_frame = ctk.CTkFrame(parent, corner_radius=10)
@@ -442,10 +621,12 @@ class MainWindow:
         # Update combo boxes
         self.from_combo.configure(values=entities)
         self.to_combo.configure(values=entities)
+        self.dw_entity_combo.configure(values=entities)
 
         if len(entities) > 0:
             self.from_combo.set(entities[0])
             self.to_combo.set(entities[0])
+            self.dw_entity_combo.set(entities[0])
 
     def parse_entity_selection(self, selection: str) -> tuple:
         """
@@ -553,6 +734,72 @@ class MainWindow:
         self.amount_entry.delete(0, "end")
         self.desc_entry.delete(0, "end")
         self.ref_entry.delete(0, "end")
+
+    def submit_deposit_withdraw(self):
+        """Submit deposit or withdraw operation"""
+        # Get operation type
+        operation = self.operation_var.get()
+        
+        # Validate amount
+        amount_str = self.dw_amount_entry.get().strip()
+        is_valid, amount = validate_amount(amount_str)
+        if not is_valid:
+            messagebox.showerror("Error", "Please enter a valid positive amount")
+            return
+        
+        # Parse entity selection
+        entity_type, entity_id, entity_name = self.parse_entity_selection(self.dw_entity_combo.get())
+        
+        if not entity_type:
+            messagebox.showerror("Error", "Please select a valid account")
+            return
+        
+        # Get description
+        description = self.dw_desc_entry.get().strip()
+        if not description:
+            description = f"Cash {operation.capitalize()}"
+        
+        # Confirm operation
+        op_text = "Deposit to" if operation == "deposit" else "Withdraw from"
+        confirm_msg = (
+            f"Confirm {operation}?\n\n"
+            f"{op_text}: {entity_name}\n"
+            f"Amount: {format_currency(amount)}\n"
+            f"Description: {description}"
+        )
+        
+        if not messagebox.askyesno(f"Confirm {operation.capitalize()}", confirm_msg):
+            return
+        
+        # Perform operation
+        try:
+            if operation == "deposit":
+                self.db.deposit(entity_type, entity_id, amount, description)
+                messagebox.showinfo("Success", f"Deposited {format_currency(amount)} successfully!")
+            else:  # withdraw
+                # Check if sufficient balance
+                if entity_type == "company":
+                    entity = self.db.get_company(entity_id)
+                else:
+                    entity = self.db.get_user(entity_id)
+                
+                if entity and entity['balance'] < amount:
+                    messagebox.showerror("Error", 
+                        f"Insufficient balance!\n\n"
+                        f"Current balance: {format_currency(entity['balance'])}\n"
+                        f"Withdraw amount: {format_currency(amount)}")
+                    return
+                
+                self.db.withdraw(entity_type, entity_id, amount, description)
+                messagebox.showinfo("Success", f"Withdrawn {format_currency(amount)} successfully!")
+            
+            # Clear form and refresh
+            self.dw_amount_entry.delete(0, "end")
+            self.dw_desc_entry.delete(0, "end")
+            self.refresh_data()
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to {operation}: {str(e)}")
 
     def load_data(self):
         """Load all data"""
