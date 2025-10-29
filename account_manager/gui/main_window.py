@@ -30,6 +30,93 @@ class MainWindow:
         self.create_main_layout()
         self.load_data()
 
+    def format_amount_input(self, event=None):
+        """
+        Format amount input in Indian numbering style (1,50,000) as user types
+        """
+        try:
+            # Get current cursor position
+            cursor_pos = self.amount_entry.index("insert")
+
+            # Get current value
+            current_value = self.amount_entry.get()
+
+            # Remove all non-numeric characters except decimal point
+            clean_value = ''.join(c for c in current_value if c.isdigit() or c == '.')
+
+            if not clean_value or clean_value == '.':
+                return
+
+            # Split into integer and decimal parts
+            if '.' in clean_value:
+                parts = clean_value.split('.')
+                integer_part = parts[0]
+                decimal_part = parts[1] if len(parts) > 1 else ''
+                # Limit decimal to 2 places
+                decimal_part = decimal_part[:2]
+            else:
+                integer_part = clean_value
+                decimal_part = ''
+
+            # Format integer part in Indian style
+            if integer_part:
+                # Reverse the string for easier grouping
+                reversed_num = integer_part[::-1]
+
+                # First group of 3, then groups of 2
+                groups = []
+                groups.append(reversed_num[:3])  # First 3 digits
+                remaining = reversed_num[3:]
+
+                # Add groups of 2
+                while remaining:
+                    groups.append(remaining[:2])
+                    remaining = remaining[2:]
+
+                # Join groups with comma and reverse back
+                formatted = ','.join(groups)
+                formatted = formatted[::-1]
+            else:
+                formatted = '0'
+
+            # Add decimal part if exists
+            if decimal_part or '.' in current_value:
+                formatted = f"{formatted}.{decimal_part}"
+
+            # Calculate new cursor position
+            # Count commas before old cursor position
+            commas_before = current_value[:cursor_pos].count(',')
+            # Count commas before same logical position in new string
+            clean_cursor_pos = cursor_pos - commas_before
+
+            # Update the entry
+            self.amount_entry.delete(0, "end")
+            self.amount_entry.insert(0, formatted)
+
+            # Try to restore cursor position
+            try:
+                # Find the new position accounting for commas
+                new_pos = 0
+                char_count = 0
+                for i, char in enumerate(formatted):
+                    if char != ',':
+                        char_count += 1
+                    if char_count >= clean_cursor_pos:
+                        new_pos = i + 1
+                        break
+                else:
+                    new_pos = len(formatted)
+
+                self.amount_entry.icursor(new_pos)
+            except:
+                pass
+
+        except Exception as e:
+            # If anything goes wrong, just continue without formatting
+            pass
+
+        return "break"  # Prevent default behavior
+
     def create_menu_bar(self):
         """Create menu bar"""
         # Create menu frame at top
@@ -132,6 +219,9 @@ class MainWindow:
             font=("Roboto", 14)
         )
         self.amount_entry.pack(fill="x", pady=(0, 15))
+        
+        # Bind event to format amount as user types (Indian numbering: 1,50,000)
+        self.amount_entry.bind("<KeyRelease>", self.format_amount_input)
 
         # From selection
         from_label = ctk.CTkLabel(form_frame, text="From:", font=("Roboto", 14))
