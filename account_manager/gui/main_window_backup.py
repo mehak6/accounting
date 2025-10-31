@@ -184,49 +184,49 @@ class MainWindow:
 
     def create_transaction_entry_panel(self, parent):
         """Create quick transaction entry panel"""
-        # Title - Made more compact
+        # Title
         title = ctk.CTkLabel(
             parent,
             text="Quick Transaction Entry",
-            font=("Roboto", 18, "bold")
+            font=("Roboto", 24, "bold")
         )
-        title.pack(pady=(10, 5))
+        title.pack(pady=(20, 10))
 
         # Form container
         form_frame = ctk.CTkFrame(parent, fg_color="transparent")
-        form_frame.pack(fill="x", padx=15, pady=5)
+        form_frame.pack(fill="both", expand=True, padx=20, pady=10)
 
         # Date field
-        date_label = ctk.CTkLabel(form_frame, text="Date:", font=("Roboto", 12))
-        date_label.pack(anchor="w", pady=(5, 2))
+        date_label = ctk.CTkLabel(form_frame, text="Date:", font=("Roboto", 14))
+        date_label.pack(anchor="w", pady=(10, 5))
 
         self.date_entry = ctk.CTkEntry(
             form_frame,
             placeholder_text="YYYY-MM-DD",
-            height=35,
-            font=("Roboto", 12)
+            height=40,
+            font=("Roboto", 14)
         )
-        self.date_entry.pack(fill="x", pady=(0, 8))
+        self.date_entry.pack(fill="x", pady=(0, 15))
         self.date_entry.insert(0, get_current_date())
 
         # Amount field
-        amount_label = ctk.CTkLabel(form_frame, text="Amount:", font=("Roboto", 12))
-        amount_label.pack(anchor="w", pady=(5, 2))
+        amount_label = ctk.CTkLabel(form_frame, text="Amount:", font=("Roboto", 14))
+        amount_label.pack(anchor="w", pady=(10, 5))
 
         self.amount_entry = ctk.CTkEntry(
             form_frame,
             placeholder_text="0.00",
-            height=35,
-            font=("Roboto", 12)
+            height=40,
+            font=("Roboto", 14)
         )
-        self.amount_entry.pack(fill="x", pady=(0, 8))
+        self.amount_entry.pack(fill="x", pady=(0, 15))
         
         # Bind event to format amount as user types (Indian numbering: 1,50,000)
         self.amount_entry.bind("<KeyRelease>", self.format_amount_input)
 
         # From selection
-        from_label = ctk.CTkLabel(form_frame, text="From:", font=("Roboto", 12))
-        from_label.pack(anchor="w", pady=(5, 2))
+        from_label = ctk.CTkLabel(form_frame, text="From:", font=("Roboto", 14))
+        from_label.pack(anchor="w", pady=(10, 5))
 
         # Create native dropdown for From selection
         self.from_var = ctk.StringVar(value="Select...")
@@ -234,16 +234,16 @@ class MainWindow:
             form_frame,
             variable=self.from_var,
             values=["Select..."],
-            height=35,
-            font=("Roboto", 12),
-            dropdown_font=("Roboto", 11),
+            height=40,
+            font=("Roboto", 14),
+            dropdown_font=("Roboto", 12),
             corner_radius=8
         )
-        self.from_dropdown.pack(fill="x", pady=(0, 8))
+        self.from_dropdown.pack(fill="x", pady=(0, 15))
 
         # To selection
-        to_label = ctk.CTkLabel(form_frame, text="To:", font=("Roboto", 12))
-        to_label.pack(anchor="w", pady=(5, 2))
+        to_label = ctk.CTkLabel(form_frame, text="To:", font=("Roboto", 14))
+        to_label.pack(anchor="w", pady=(10, 5))
 
         # Create native dropdown for To selection
         self.to_var = ctk.StringVar(value="Select...")
@@ -251,111 +251,118 @@ class MainWindow:
             form_frame,
             variable=self.to_var,
             values=["Select..."],
-            height=35,
-            font=("Roboto", 12),
-            dropdown_font=("Roboto", 11),
+            height=40,
+            font=("Roboto", 14),
+            dropdown_font=("Roboto", 12),
             corner_radius=8
         )
-        self.to_dropdown.pack(fill="x", pady=(0, 8))
+        self.to_dropdown.pack(fill="x", pady=(0, 15))
 
         # Description field
-        desc_label = ctk.CTkLabel(form_frame, text="Description (Optional):", font=("Roboto", 12))
-        desc_label.pack(anchor="w", pady=(5, 2))
+        desc_label = ctk.CTkLabel(form_frame, text="Description (Optional):", font=("Roboto", 14))
+        desc_label.pack(anchor="w", pady=(10, 5))
 
         self.desc_entry = ctk.CTkEntry(
             form_frame,
             placeholder_text="Transaction description",
-            height=35,
-            font=("Roboto", 12)
+            height=40,
+            font=("Roboto", 14)
         )
-        self.desc_entry.pack(fill="x", pady=(0, 8))
+        self.desc_entry.pack(fill="x", pady=(0, 15))
 
         # Reference field
-        ref_label = ctk.CTkLabel(form_frame, text="Reference (Optional):", font=("Roboto", 12))
-        ref_label.pack(anchor="w", pady=(5, 2))
+        ref_label = ctk.CTkLabel(form_frame, text="Reference (Optional):", font=("Roboto", 14))
+        ref_label.pack(anchor="w", pady=(10, 5))
 
         self.ref_entry = ctk.CTkEntry(
             form_frame,
             placeholder_text="Reference number",
-            height=35,
-            font=("Roboto", 12)
+            height=40,
+            font=("Roboto", 14)
         )
-        self.ref_entry.pack(fill="x", pady=(0, 10))
+        self.ref_entry.pack(fill="x", pady=(0, 20))
 
-        # Submit button - Made more prominent and compact
+        # Submit button
         submit_btn = ctk.CTkButton(
             form_frame,
-            text="✓ Submit Transaction",
-            height=42,
-            font=("Roboto", 14, "bold"),
-            corner_radius=8,
-            command=self.submit_transaction,
-            fg_color="#1f77b4",
-            hover_color="#1557a0"
+            text="Submit Transaction",
+            height=50,
+            font=("Roboto", 16, "bold"),
+            corner_radius=10,
+            command=self.submit_transaction
         )
-        submit_btn.pack(fill="x", pady=(10, 5))
+        submit_btn.pack(fill="x", pady=(10, 20))
 
-        # Clear button - Improved styling and compact
+        # Clear button
         clear_btn = ctk.CTkButton(
             form_frame,
-            text="⟲ Clear Form",
-            height=36,
-            font=("Roboto", 12, "bold"),
-            corner_radius=8,
-            fg_color="#666666",
-            hover_color="#555555",
+            text="Clear Form",
+            height=40,
+            font=("Roboto", 14),
+            corner_radius=10,
+            fg_color="gray",
+            hover_color="darkgray",
             command=self.clear_form
         )
-        clear_btn.pack(fill="x", pady=(0, 10))
+        clear_btn.pack(fill="x")
 
     def create_deposit_withdraw_panel(self, parent):
         """Create deposit/withdraw panel for cash in/out operations"""
-        # Main frame - More compact
+        # Main frame
         dw_frame = ctk.CTkFrame(parent, corner_radius=10)
-        dw_frame.pack(fill="x", padx=15, pady=(10, 10))
+        dw_frame.pack(fill="x", padx=20, pady=(20, 0))
 
-        # Title - More compact
+        # Title
         title = ctk.CTkLabel(
             dw_frame,
             text="💰 Cash Deposit / Withdraw",
-            font=("Roboto", 14, "bold")
+            font=("Roboto", 18, "bold")
         )
-        title.pack(pady=(10, 5))
+        title.pack(pady=(20, 10))
+
+        # Description
+        desc = ctk.CTkLabel(
+            dw_frame,
+            text="Add or remove cash from accounts",
+            font=("Roboto", 12),
+            text_color="gray"
+        )
+        desc.pack(pady=(0, 20))
 
         # Form frame
         form_frame = ctk.CTkFrame(dw_frame, fg_color="transparent")
-        form_frame.pack(fill="x", padx=15, pady=(0, 10))
+        form_frame.pack(fill="x", padx=20, pady=(0, 20))
 
-        # Operation type (Deposit or Withdraw) - More compact
-        op_label = ctk.CTkLabel(form_frame, text="Operation:", font=("Roboto", 12))
-        op_label.pack(anchor="w", pady=(0, 3))
+        # Operation type (Deposit or Withdraw)
+        op_label = ctk.CTkLabel(form_frame, text="Operation:", font=("Roboto", 14))
+        op_label.pack(anchor="w", pady=(0, 5))
 
         self.operation_var = ctk.StringVar(value="deposit")
-
+        
         op_radio_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
-        op_radio_frame.pack(fill="x", pady=(0, 8))
+        op_radio_frame.pack(fill="x", pady=(0, 15))
 
         deposit_radio = ctk.CTkRadioButton(
             op_radio_frame,
-            text="💵 Deposit",
+            text="💵 Deposit (Add Money)",
             variable=self.operation_var,
             value="deposit",
-            font=("Roboto", 11)
+            font=("Roboto", 13)
         )
-        deposit_radio.pack(side="left", padx=(0, 15))
+        deposit_radio.pack(side="left", padx=(0, 20))
 
         withdraw_radio = ctk.CTkRadioButton(
             op_radio_frame,
-            text="💸 Withdraw",
+            text="💸 Withdraw (Remove Money)",
             variable=self.operation_var,
             value="withdraw",
-            font=("Roboto", 11)
+            font=("Roboto", 13)
         )
         withdraw_radio.pack(side="left")
 
-        # Entity selection - More compact
-        entity_label = ctk.CTkLabel(form_frame, text="Account:", font=("Roboto", 12))
-        entity_label.pack(anchor="w", pady=(5, 2))
+        # Entity selection
+        entity_label = ctk.CTkLabel(form_frame, text="Select Account:", font=("Roboto", 14))
+        entity_label.pack(anchor="w", pady=(10, 5))
 
         # Create native dropdown for entity selection
         self.dw_entity_var = ctk.StringVar(value="Select...")
@@ -363,52 +370,52 @@ class MainWindow:
             form_frame,
             variable=self.dw_entity_var,
             values=["Select..."],
-            height=35,
-            font=("Roboto", 12),
-            dropdown_font=("Roboto", 11),
+            height=40,
+            font=("Roboto", 14),
+            dropdown_font=("Roboto", 12),
             corner_radius=8
         )
-        self.dw_entity_dropdown.pack(fill="x", pady=(0, 8))
+        self.dw_entity_dropdown.pack(fill="x", pady=(0, 15))
 
-        # Amount field - More compact
-        amount_label = ctk.CTkLabel(form_frame, text="Amount:", font=("Roboto", 12))
-        amount_label.pack(anchor="w", pady=(5, 2))
+        # Amount field
+        amount_label = ctk.CTkLabel(form_frame, text="Amount:", font=("Roboto", 14))
+        amount_label.pack(anchor="w", pady=(10, 5))
 
         self.dw_amount_entry = ctk.CTkEntry(
             form_frame,
             placeholder_text="0.00",
-            height=35,
-            font=("Roboto", 12)
+            height=40,
+            font=("Roboto", 14)
         )
-        self.dw_amount_entry.pack(fill="x", pady=(0, 8))
+        self.dw_amount_entry.pack(fill="x", pady=(0, 15))
 
         # Bind formatting event
         self.dw_amount_entry.bind("<KeyRelease>", self.format_dw_amount_input)
 
-        # Description field - More compact
-        desc_label = ctk.CTkLabel(form_frame, text="Description (Optional):", font=("Roboto", 12))
-        desc_label.pack(anchor="w", pady=(5, 2))
+        # Description field
+        desc_label = ctk.CTkLabel(form_frame, text="Description (Optional):", font=("Roboto", 14))
+        desc_label.pack(anchor="w", pady=(10, 5))
 
         self.dw_desc_entry = ctk.CTkEntry(
             form_frame,
             placeholder_text="Purpose of deposit/withdrawal",
-            height=35,
-            font=("Roboto", 12)
+            height=40,
+            font=("Roboto", 14)
         )
-        self.dw_desc_entry.pack(fill="x", pady=(0, 8))
+        self.dw_desc_entry.pack(fill="x", pady=(0, 15))
 
-        # Submit button - Compact and prominent
+        # Submit button
         submit_btn = ctk.CTkButton(
             form_frame,
-            text="✓ Submit",
-            height=42,
-            font=("Roboto", 14, "bold"),
-            corner_radius=8,
+            text="Submit",
+            height=50,
+            font=("Roboto", 16, "bold"),
+            corner_radius=10,
             command=self.submit_deposit_withdraw,
             fg_color="#2ecc71",
             hover_color="#27ae60"
         )
-        submit_btn.pack(fill="x", pady=(10, 10))
+        submit_btn.pack(fill="x", pady=(10, 0))
 
     def format_dw_amount_input(self, event=None):
         """Format deposit/withdraw amount input in Indian numbering style"""

@@ -18,7 +18,9 @@
       "Bash(git remote add:*)",
       "Bash(git push:*)",
       "mcp__filesystem__read_text_file",
-      "mcp__filesystem__edit_file"
+      "mcp__filesystem__edit_file",
+      "Bash(pyinstaller:*)",
+      "Bash(./AccountManager.exe)"
     ],
     "deny": [],
     "ask": []

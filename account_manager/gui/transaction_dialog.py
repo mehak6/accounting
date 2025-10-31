@@ -251,7 +251,7 @@ class TransactionDialog:
         top_row.pack(fill="x")
         top_row.bind("<Button-1>", lambda e, t=trans: self.select_transaction(t))
 
-        date_text = format_date(trans['transaction_date'], "%Y-%m-%d", "%b %d, %Y")
+        date_text = format_date(trans['transaction_date'], "%d-%m-%Y", "%d %b, %Y")
         date_label = ctk.CTkLabel(
             top_row,
             text=date_text,
@@ -316,7 +316,7 @@ class TransactionDialog:
         # Populate details
         self.detail_id.configure(text=str(trans['id']))
 
-        date_text = format_date(trans['transaction_date'], "%Y-%m-%d", "%B %d, %Y")
+        date_text = format_date(trans['transaction_date'], "%d-%m-%Y", "%d %B, %Y")
         self.detail_date.configure(text=date_text)
 
         self.detail_amount.configure(

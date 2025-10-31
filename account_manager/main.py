@@ -17,7 +17,7 @@ except ImportError:
     sys.exit(1)
 
 from database.db_manager import DatabaseManager
-from gui.main_window import MainWindow
+from gui.main_window_tabbed import MainWindow
 
 
 class AccountManagerApp:

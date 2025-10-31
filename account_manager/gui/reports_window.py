@@ -362,7 +362,7 @@ class ReportsWindow:
         top = ctk.CTkFrame(content, fg_color="transparent")
         top.pack(fill="x")
 
-        date_text = format_date(trans['transaction_date'], "%Y-%m-%d", "%b %d, %Y")
+        date_text = format_date(trans['transaction_date'], "%d-%m-%Y", "%d %b, %Y")
         ctk.CTkLabel(
             top,
             text=date_text,
