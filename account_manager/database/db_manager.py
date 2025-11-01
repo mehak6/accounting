@@ -727,12 +727,16 @@ class DatabaseManager:
                 running_balance += trans['amount']
                 trans_type = 'Credit'
                 other_party = trans['from_name'] if trans['from_type'] != 'cash' else 'Cash Deposit'
+                other_party_type = trans['from_type']
+                other_party_id = trans['from_id']
             else:
                 # Money going out (debit)
                 running_balance -= trans['amount']
                 trans_type = 'Debit'
                 other_party = trans['to_name'] if trans['to_type'] != 'cash' else 'Cash Withdrawal'
-            
+                other_party_type = trans['to_type']
+                other_party_id = trans['to_id']
+
             # Add ledger entry
             ledger_entry = {
                 'id': trans['id'],
@@ -741,6 +745,8 @@ class DatabaseManager:
                 'description': trans['description'] or '',
                 'reference': trans['reference'] or '',
                 'other_party': other_party,
+                'other_party_type': other_party_type,
+                'other_party_id': other_party_id,
                 'amount': trans['amount'],
                 'running_balance': running_balance,
                 'from_name': trans['from_name'],
