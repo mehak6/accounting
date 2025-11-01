@@ -36,7 +36,13 @@ class LedgerWindow(ctk.CTkToplevel):
 
         # Window setup
         self.title(f"Ledger - {entity_name}")
-        self.geometry("1200x800")
+
+        # Set window size based on screen size (max 90% of screen)
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        window_width = min(1000, int(screen_width * 0.9))
+        window_height = min(700, int(screen_height * 0.85))
+        self.geometry(f"{window_width}x{window_height}")
 
         # Make window modal
         self.transient(parent)
@@ -46,6 +52,7 @@ class LedgerWindow(ctk.CTkToplevel):
         self.create_header()
         self.create_view_toggle()
         self.create_ledger_table()
+        self.create_footer()
         self.load_ledger_data()
 
         # Center window
@@ -161,7 +168,7 @@ class LedgerWindow(ctk.CTkToplevel):
         """Create scrollable ledger table"""
         # Container frame
         self.table_container = ctk.CTkFrame(self, corner_radius=10)
-        self.table_container.pack(fill="both", expand=True, padx=20, pady=(10, 20))
+        self.table_container.pack(fill="both", expand=True, padx=20, pady=(10, 10))
 
         # Scrollable frame for transactions
         self.scroll_frame = ctk.CTkScrollableFrame(
@@ -169,6 +176,24 @@ class LedgerWindow(ctk.CTkToplevel):
             fg_color="transparent"
         )
         self.scroll_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+    def create_footer(self):
+        """Create footer with close button"""
+        footer_frame = ctk.CTkFrame(self, fg_color="transparent")
+        footer_frame.pack(fill="x", padx=20, pady=(0, 20))
+
+        # Close button
+        close_btn = ctk.CTkButton(
+            footer_frame,
+            text="✖ Close",
+            command=self.destroy,
+            width=120,
+            height=40,
+            font=("Roboto", 14, "bold"),
+            fg_color="#e74c3c",
+            hover_color="#c0392b"
+        )
+        close_btn.pack(pady=10)
 
     def load_ledger_data(self):
         """Load and display ledger entries"""
