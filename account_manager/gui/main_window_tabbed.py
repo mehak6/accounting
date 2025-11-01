@@ -964,18 +964,39 @@ class MainWindow:
         )
         refresh_btn.pack(side="left", padx=5)
 
-        # Delete button
+        # Delete button - Enhanced (red, larger, bold)
         self.transaction_delete_btn = ctk.CTkButton(
             toolbar,
-            text="🗑️ Delete",
-            width=100,
-            height=35,
-            fg_color="red",
-            hover_color="darkred",
+            text="🗑️ DELETE",
+            width=130,
+            height=45,
+            font=("Roboto", 14, "bold"),
+            corner_radius=10,
+            fg_color="#e74c3c",
+            hover_color="#c0392b",
+            border_width=2,
+            border_color="#922b21",
             command=self.delete_transaction,
             state="disabled"
         )
-        self.transaction_delete_btn.pack(side="right", padx=15)
+        self.transaction_delete_btn.pack(side="right", padx=10)
+
+        # Update button - Enhanced (orange, larger, bold)
+        self.transaction_update_btn = ctk.CTkButton(
+            toolbar,
+            text="✎ UPDATE",
+            width=130,
+            height=45,
+            font=("Roboto", 14, "bold"),
+            corner_radius=10,
+            fg_color="#f39c12",
+            hover_color="#d68910",
+            border_width=2,
+            border_color="#b87a0a",
+            command=self.update_transaction_tab,
+            state="disabled"
+        )
+        self.transaction_update_btn.pack(side="right", padx=10)
 
     def create_transaction_list_panel(self, parent):
         """Create scrollable transaction list"""
@@ -1201,7 +1222,8 @@ class MainWindow:
         self.trans_detail_desc.configure(text=trans.get('description', '--'))
         self.trans_detail_ref.configure(text=trans.get('reference', '--'))
 
-        # Enable delete button
+        # Enable update and delete buttons
+        self.transaction_update_btn.configure(state="normal")
         self.transaction_delete_btn.configure(state="normal")
 
     def search_transactions_list(self):
@@ -1268,6 +1290,7 @@ class MainWindow:
 
             # Clear selection
             self.selected_transaction_id = None
+            self.transaction_update_btn.configure(state="disabled")
             self.transaction_delete_btn.configure(state="disabled")
 
             # Refresh list
@@ -1276,6 +1299,290 @@ class MainWindow:
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to delete transaction: {str(e)}")
+
+    def update_transaction_tab(self):
+        """Enable editing mode for selected transaction in the details panel"""
+        if not self.selected_transaction_id:
+            messagebox.showerror("Error", "No transaction selected")
+            return
+
+        trans = self.db.get_transaction(self.selected_transaction_id)
+        if not trans:
+            messagebox.showerror("Error", "Transaction not found")
+            return
+
+        # Store original transaction for cancel
+        self.editing_transaction = trans
+
+        # Get all entities for dropdowns (using same format as dashboard)
+        all_entities = []
+        # Add Cash option
+        all_entities.append("[Cash] Cash")
+        for company in self.db.get_all_companies():
+            all_entities.append(f"[Company] {company['name']}")
+        for user in self.db.get_all_users():
+            company_name = ""
+            if user.get('company_id'):
+                company = self.db.get_company(user['company_id'])
+                if company:
+                    company_name = f" ({company['name']})"
+            all_entities.append(f"[User] {user['name']}{company_name}")
+
+        # Clear current details and create edit form
+        # Clear the details labels and replace with entry fields
+        # Date - replace label with entry
+        self.trans_detail_date_entry = ctk.CTkEntry(
+            self.trans_detail_date.master,
+            font=("Roboto", 12, "bold"),
+            height=30
+        )
+        self.trans_detail_date.pack_forget()
+        self.trans_detail_date_entry.pack(side="left", fill="x", expand=True)
+        self.trans_detail_date_entry.insert(0, trans['transaction_date'])
+
+        # Amount - replace label with entry
+        self.trans_detail_amount_entry = ctk.CTkEntry(
+            self.trans_detail_amount.master,
+            font=("Roboto", 12, "bold"),
+            height=30
+        )
+        self.trans_detail_amount.pack_forget()
+        self.trans_detail_amount_entry.pack(side="left", fill="x", expand=True)
+        self.trans_detail_amount_entry.insert(0, str(trans['amount']))
+        # Add Indian rupee formatting
+        self.trans_detail_amount_entry.bind("<KeyRelease>", self.format_edit_amount_input)
+
+        # From - replace label with dropdown
+        # Format the initial value to match the dropdown format: [Company] Name or [User] Name or [Cash] Cash
+        from_initial = ""
+        if trans['from_type'] == 'cash':
+            from_initial = "[Cash] Cash"
+        elif trans['from_type'] == 'company':
+            from_initial = f"[Company] {trans['from_name']}"
+        elif trans['from_type'] == 'user':
+            from_initial = f"[User] {trans['from_name']}"
+            # Add company info if user has one
+            from_user = next((u for u in self.db.get_all_users() if u['name'] == trans['from_name']), None)
+            if from_user and from_user.get('company_id'):
+                from_company = self.db.get_company(from_user['company_id'])
+                if from_company:
+                    from_initial += f" ({from_company['name']})"
+
+        self.trans_detail_from_var = ctk.StringVar(value=from_initial)
+        self.trans_detail_from_dropdown = ctk.CTkOptionMenu(
+            self.trans_detail_from.master,
+            variable=self.trans_detail_from_var,
+            values=all_entities,
+            font=("Roboto", 11),
+            height=30
+        )
+        self.trans_detail_from.pack_forget()
+        self.trans_detail_from_dropdown.pack(side="left", fill="x", expand=True)
+
+        # To - replace label with dropdown
+        # Format the initial value to match the dropdown format: [Company] Name or [User] Name or [Cash] Cash
+        to_initial = ""
+        if trans['to_type'] == 'cash':
+            to_initial = "[Cash] Cash"
+        elif trans['to_type'] == 'company':
+            to_initial = f"[Company] {trans['to_name']}"
+        elif trans['to_type'] == 'user':
+            to_initial = f"[User] {trans['to_name']}"
+            # Add company info if user has one
+            to_user = next((u for u in self.db.get_all_users() if u['name'] == trans['to_name']), None)
+            if to_user and to_user.get('company_id'):
+                to_company = self.db.get_company(to_user['company_id'])
+                if to_company:
+                    to_initial += f" ({to_company['name']})"
+
+        self.trans_detail_to_var = ctk.StringVar(value=to_initial)
+        self.trans_detail_to_dropdown = ctk.CTkOptionMenu(
+            self.trans_detail_to.master,
+            variable=self.trans_detail_to_var,
+            values=all_entities,
+            font=("Roboto", 11),
+            height=30
+        )
+        self.trans_detail_to.pack_forget()
+        self.trans_detail_to_dropdown.pack(side="left", fill="x", expand=True)
+
+        # Description - replace label with entry
+        self.trans_detail_desc_entry = ctk.CTkEntry(
+            self.trans_detail_desc.master,
+            font=("Roboto", 12, "bold"),
+            height=30
+        )
+        self.trans_detail_desc.pack_forget()
+        self.trans_detail_desc_entry.pack(side="left", fill="x", expand=True)
+        if trans.get('description'):
+            self.trans_detail_desc_entry.insert(0, trans['description'])
+
+        # Reference - replace label with entry
+        self.trans_detail_ref_entry = ctk.CTkEntry(
+            self.trans_detail_ref.master,
+            font=("Roboto", 12, "bold"),
+            height=30
+        )
+        self.trans_detail_ref.pack_forget()
+        self.trans_detail_ref_entry.pack(side="left", fill="x", expand=True)
+        if trans.get('reference'):
+            self.trans_detail_ref_entry.insert(0, trans['reference'])
+
+        # Hide UPDATE and DELETE buttons, show SUBMIT and CANCEL buttons
+        self.transaction_update_btn.pack_forget()
+        self.transaction_delete_btn.pack_forget()
+
+        # Create SUBMIT button
+        self.transaction_submit_btn = ctk.CTkButton(
+            self.transaction_update_btn.master,
+            text="✓ SUBMIT CHANGES",
+            width=150,
+            height=45,
+            font=("Roboto", 14, "bold"),
+            corner_radius=10,
+            fg_color="#2ecc71",
+            hover_color="#27ae60",
+            border_width=2,
+            border_color="#1e8449",
+            command=self.submit_transaction_update
+        )
+        self.transaction_submit_btn.pack(side="right", padx=10)
+
+        # Create CANCEL button
+        self.transaction_cancel_btn = ctk.CTkButton(
+            self.transaction_update_btn.master,
+            text="✕ CANCEL",
+            width=150,
+            height=45,
+            font=("Roboto", 14, "bold"),
+            corner_radius=10,
+            fg_color="#95a5a6",
+            hover_color="#7f8c8d",
+            border_width=2,
+            border_color="#5d6d7e",
+            command=self.cancel_transaction_update
+        )
+        self.transaction_cancel_btn.pack(side="right", padx=10)
+
+    def submit_transaction_update(self):
+        """Submit the updated transaction"""
+        # Get values from entry fields
+        date = self.trans_detail_date_entry.get().strip()
+        amount = self.trans_detail_amount_entry.get().strip()
+        from_entity = self.trans_detail_from_var.get()
+        to_entity = self.trans_detail_to_var.get()
+        description = self.trans_detail_desc_entry.get().strip()
+        reference = self.trans_detail_ref_entry.get().strip()
+
+        # Validate
+        if not all([date, amount, from_entity, to_entity]):
+            messagebox.showerror("Error", "Please fill in all required fields")
+            return
+
+        if from_entity == to_entity:
+            messagebox.showerror("Error", "From and To entities must be different")
+            return
+
+        try:
+            amount = float(amount.replace(',', ''))
+            if amount <= 0:
+                raise ValueError("Amount must be positive")
+        except ValueError:
+            messagebox.showerror("Error", "Please enter a valid amount")
+            return
+
+        # Parse entities to get type, id, and name
+        from_type, from_id, from_name = self.parse_entity_selection(from_entity)
+        to_type, to_id, to_name = self.parse_entity_selection(to_entity)
+
+        if not from_type or not to_type:
+            messagebox.showerror("Error", "Please select valid sender and receiver")
+            return
+
+        if from_type == to_type and from_id == to_id:
+            messagebox.showerror("Error", "Cannot transfer to the same account")
+            return
+
+        # Delete old transaction
+        try:
+            self.db.delete_transaction(self.selected_transaction_id)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to update transaction: {str(e)}")
+            return
+
+        # Add new transaction
+        try:
+            self.db.add_transaction(
+                transaction_date=date,
+                amount=amount,
+                from_type=from_type,
+                from_id=from_id,
+                to_type=to_type,
+                to_id=to_id,
+                description=description if description else "",
+                reference=reference if reference else ""
+            )
+
+            messagebox.showinfo("Success", "Transaction updated successfully!")
+
+            # Reset edit mode
+            self.cancel_transaction_update()
+
+            # Refresh list
+            self.load_transactions_list()
+            self.refresh_dashboard()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to update transaction: {str(e)}")
+
+    def cancel_transaction_update(self):
+        """Cancel edit mode and restore display mode"""
+        # Destroy entry fields
+        if hasattr(self, 'trans_detail_date_entry'):
+            self.trans_detail_date_entry.destroy()
+        if hasattr(self, 'trans_detail_amount_entry'):
+            self.trans_detail_amount_entry.destroy()
+        if hasattr(self, 'trans_detail_from_dropdown'):
+            self.trans_detail_from_dropdown.destroy()
+        if hasattr(self, 'trans_detail_to_dropdown'):
+            self.trans_detail_to_dropdown.destroy()
+        if hasattr(self, 'trans_detail_desc_entry'):
+            self.trans_detail_desc_entry.destroy()
+        if hasattr(self, 'trans_detail_ref_entry'):
+            self.trans_detail_ref_entry.destroy()
+
+        # Restore labels
+        self.trans_detail_date.pack(side="left", fill="x", expand=True)
+        self.trans_detail_amount.pack(side="left", fill="x", expand=True)
+        self.trans_detail_from.pack(side="left", fill="x", expand=True)
+        self.trans_detail_to.pack(side="left", fill="x", expand=True)
+        self.trans_detail_desc.pack(side="left", fill="x", expand=True)
+        self.trans_detail_ref.pack(side="left", fill="x", expand=True)
+
+        # Destroy SUBMIT and CANCEL buttons
+        if hasattr(self, 'transaction_submit_btn'):
+            self.transaction_submit_btn.destroy()
+        if hasattr(self, 'transaction_cancel_btn'):
+            self.transaction_cancel_btn.destroy()
+
+        # Restore UPDATE and DELETE buttons
+        self.transaction_update_btn.pack(side="right", padx=10)
+        self.transaction_delete_btn.pack(side="right", padx=10)
+
+        # Clear selection
+        self.selected_transaction_id = None
+        self.transaction_update_btn.configure(state="disabled")
+        self.transaction_delete_btn.configure(state="disabled")
+
+        # Reset detail labels
+        self.trans_detail_id.configure(text="--")
+        self.trans_detail_date.configure(text="--")
+        self.trans_detail_amount.configure(text="--", text_color="white")
+        self.trans_detail_from.configure(text="--")
+        self.trans_detail_to.configure(text="--")
+        self.trans_detail_type.configure(text="--")
+        self.trans_detail_desc.configure(text="--")
+        self.trans_detail_ref.configure(text="--")
 
     def create_reports_tab(self):
         """Create reports tab"""
@@ -1411,7 +1718,7 @@ class MainWindow:
         buttons_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
         buttons_frame.pack(fill="x", pady=(10, 0))
 
-        # Submit button - Enhanced visibility
+        # Submit button - Enhanced visibility (full width)
         self.submit_btn = ctk.CTkButton(
             buttons_frame,
             text="✓ SUBMIT TRANSACTION",
@@ -1424,23 +1731,7 @@ class MainWindow:
             border_color="#1e8449",
             command=self.submit_transaction
         )
-        self.submit_btn.pack(side="left", fill="x", expand=True, padx=(0, 5))
-
-        # Update button - Enhanced visibility
-        self.update_transaction_btn = ctk.CTkButton(
-            buttons_frame,
-            text="✎ UPDATE TRANSACTION",
-            height=60,
-            font=("Roboto", 18, "bold"),
-            corner_radius=12,
-            fg_color="#f39c12",
-            hover_color="#d68910",
-            border_width=2,
-            border_color="#b87a0a",
-            command=self.update_dashboard_transaction,
-            state="disabled"
-        )
-        self.update_transaction_btn.pack(side="left", fill="x", expand=True, padx=(5, 0))
+        self.submit_btn.pack(fill="x")
 
         # Clear button - Enhanced visibility
         clear_btn = ctk.CTkButton(
@@ -1698,6 +1989,67 @@ class MainWindow:
 
         return "break"
 
+    def format_edit_amount_input(self, event=None):
+        """Format amount input in Indian numbering style for edit mode"""
+        try:
+            cursor_pos = self.trans_detail_amount_entry.index("insert")
+            current_value = self.trans_detail_amount_entry.get()
+            clean_value = ''.join(c for c in current_value if c.isdigit() or c == '.')
+
+            if not clean_value or clean_value == '.':
+                return
+
+            if '.' in clean_value:
+                parts = clean_value.split('.')
+                integer_part = parts[0]
+                decimal_part = parts[1][:2] if len(parts) > 1 else ''
+            else:
+                integer_part = clean_value
+                decimal_part = ''
+
+            if integer_part:
+                reversed_num = integer_part[::-1]
+                groups = [reversed_num[:3]]
+                remaining = reversed_num[3:]
+
+                while remaining:
+                    groups.append(remaining[:2])
+                    remaining = remaining[2:]
+
+                formatted = ','.join(groups)[::-1]
+            else:
+                formatted = '0'
+
+            if decimal_part or '.' in current_value:
+                formatted = f"{formatted}.{decimal_part}"
+
+            commas_before = current_value[:cursor_pos].count(',')
+            clean_cursor_pos = cursor_pos - commas_before
+
+            self.trans_detail_amount_entry.delete(0, "end")
+            self.trans_detail_amount_entry.insert(0, formatted)
+
+            try:
+                new_pos = 0
+                char_count = 0
+                for i, char in enumerate(formatted):
+                    if char != ',':
+                        char_count += 1
+                    if char_count >= clean_cursor_pos:
+                        new_pos = i + 1
+                        break
+                else:
+                    new_pos = len(formatted)
+
+                self.trans_detail_amount_entry.icursor(new_pos)
+            except:
+                pass
+
+        except Exception as e:
+            pass
+
+        return "break"
+
     def load_data(self):
         """Load all data"""
         # Load dashboard data
@@ -1872,7 +2224,10 @@ class MainWindow:
         if not selection or "No entities" in selection:
             return None, None, None
 
-        if selection.startswith("[Company]"):
+        if selection.startswith("[Cash]"):
+            # Cash transactions use entity_id = 0
+            return "cash", 0, "Cash"
+        elif selection.startswith("[Company]"):
             entity_type = "company"
             name_part = selection.replace("[Company]", "").strip()
         elif selection.startswith("[User]"):
@@ -1987,7 +2342,7 @@ class MainWindow:
 
         # Disable submit, enable update
         self.submit_btn.configure(state="disabled")
-        self.update_transaction_btn.configure(state="normal")
+        # self.update_transaction_btn.configure(state="normal")  # Button removed from dashboard
 
         # Switch to Dashboard tab
         self.tabview.set("🏠 Dashboard")
@@ -2157,4 +2512,4 @@ class MainWindow:
 
         # Enable submit, disable update
         self.submit_btn.configure(state="normal")
-        self.update_transaction_btn.configure(state="disabled")
+        # self.update_transaction_btn.configure(state="disabled")  # Button removed from dashboard

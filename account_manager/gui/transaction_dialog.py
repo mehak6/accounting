@@ -45,6 +45,9 @@ class TransactionDialog:
         # Top: Search and filter bar
         self.create_toolbar(main_container)
 
+        # Action buttons row (UPDATE and DELETE) - Separate row for maximum visibility
+        self.create_action_buttons(main_container)
+
         # Middle: Transaction list
         list_frame = ctk.CTkFrame(main_container, corner_radius=10)
         list_frame.pack(fill="both", expand=True, pady=(10, 10))
@@ -99,18 +102,59 @@ class TransactionDialog:
         )
         refresh_btn.pack(side="left", padx=5)
 
-        # Delete button
+    def create_action_buttons(self, parent):
+        """Create action buttons row (UPDATE and DELETE) in a separate prominent row"""
+        # Action buttons frame - separate row for maximum visibility
+        action_frame = ctk.CTkFrame(parent, corner_radius=10, fg_color="#2b2b2b")
+        action_frame.pack(fill="x", pady=(10, 0))
+
+        # Configure grid columns
+        action_frame.grid_columnconfigure(0, weight=1)  # Info label takes remaining space
+        action_frame.grid_columnconfigure(1, weight=0)  # Update button fixed
+        action_frame.grid_columnconfigure(2, weight=0)  # Delete button fixed
+
+        # Info label
+        info_label = ctk.CTkLabel(
+            action_frame,
+            text="📋 Select a transaction below to UPDATE or DELETE it:",
+            font=("Roboto", 14, "bold"),
+            text_color="#3498db"
+        )
+        info_label.grid(row=0, column=0, padx=20, pady=15, sticky="w")
+
+        # Update button - Very prominent (GRID column 1)
+        self.update_btn = ctk.CTkButton(
+            action_frame,
+            text="✎ UPDATE",
+            width=180,
+            height=50,
+            font=("Roboto", 16, "bold"),
+            corner_radius=12,
+            fg_color="#f39c12",
+            hover_color="#d68910",
+            border_width=3,
+            border_color="#b87a0a",
+            command=self.update_transaction,
+            state="disabled"
+        )
+        self.update_btn.grid(row=0, column=1, padx=10, pady=15)
+
+        # Delete button - Very prominent (GRID column 2)
         self.delete_btn = ctk.CTkButton(
-            toolbar,
-            text="🗑️ Delete",
-            width=100,
-            height=35,
-            fg_color="red",
-            hover_color="darkred",
+            action_frame,
+            text="🗑️ DELETE",
+            width=180,
+            height=50,
+            font=("Roboto", 16, "bold"),
+            corner_radius=12,
+            fg_color="#e74c3c",
+            hover_color="#c0392b",
+            border_width=3,
+            border_color="#922b21",
             command=self.delete_transaction,
             state="disabled"
         )
-        self.delete_btn.pack(side="right", padx=15)
+        self.delete_btn.grid(row=0, column=2, padx=10, pady=15)
 
     def create_transaction_list(self, parent):
         """Create scrollable transaction list"""
@@ -336,7 +380,8 @@ class TransactionDialog:
         self.detail_desc.configure(text=trans.get('description', '--'))
         self.detail_ref.configure(text=trans.get('reference', '--'))
 
-        # Enable delete button
+        # Enable update and delete buttons
+        self.update_btn.configure(state="normal")
         self.delete_btn.configure(state="normal")
 
     def search_transactions(self):
@@ -403,6 +448,7 @@ class TransactionDialog:
 
             # Clear selection
             self.selected_transaction_id = None
+            self.update_btn.configure(state="disabled")
             self.delete_btn.configure(state="disabled")
 
             # Refresh list
@@ -410,3 +456,226 @@ class TransactionDialog:
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to delete transaction: {str(e)}")
+
+    def update_transaction(self):
+        """Open dialog to update selected transaction"""
+        if not self.selected_transaction_id:
+            messagebox.showerror("Error", "No transaction selected")
+            return
+
+        trans = self.db.get_transaction(self.selected_transaction_id)
+        if not trans:
+            messagebox.showerror("Error", "Transaction not found")
+            return
+
+        # Create update dialog
+        update_dialog = ctk.CTkToplevel(self.dialog)
+        update_dialog.title("Update Transaction")
+        update_dialog.geometry("600x700")
+        update_dialog.transient(self.dialog)
+        update_dialog.grab_set()
+
+        # Main container
+        main_frame = ctk.CTkScrollableFrame(update_dialog)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        # Title
+        title = ctk.CTkLabel(
+            main_frame,
+            text="✎ Update Transaction",
+            font=("Roboto", 24, "bold")
+        )
+        title.pack(pady=(0, 20))
+
+        # Transaction ID (read-only)
+        id_label = ctk.CTkLabel(main_frame, text=f"Transaction ID: {trans['id']}", font=("Roboto", 12), text_color="gray")
+        id_label.pack(anchor="w", pady=(0, 15))
+
+        # Date field
+        date_label = ctk.CTkLabel(main_frame, text="Date:", font=("Roboto", 13))
+        date_label.pack(anchor="w", pady=(5, 3))
+
+        date_entry = ctk.CTkEntry(
+            main_frame,
+            placeholder_text="DD-MM-YYYY",
+            height=38,
+            font=("Roboto", 13)
+        )
+        date_entry.insert(0, trans['transaction_date'])
+        date_entry.pack(fill="x", pady=(0, 8))
+
+        # Amount field
+        amount_label = ctk.CTkLabel(main_frame, text="Amount (₹):", font=("Roboto", 13))
+        amount_label.pack(anchor="w", pady=(5, 3))
+
+        amount_entry = ctk.CTkEntry(
+            main_frame,
+            placeholder_text="Enter amount",
+            height=38,
+            font=("Roboto", 13)
+        )
+        amount_entry.insert(0, str(trans['amount']))
+        amount_entry.pack(fill="x", pady=(0, 8))
+
+        # From dropdown
+        from_label = ctk.CTkLabel(main_frame, text="From:", font=("Roboto", 13))
+        from_label.pack(anchor="w", pady=(5, 3))
+
+        # Get all entities
+        all_entities = []
+        for account in self.db.get_all_accounts():
+            all_entities.append(f"{account['name']} (Account)")
+        for customer in self.db.get_all_customers():
+            all_entities.append(f"{customer['name']} (Customer)")
+        all_entities.append("Cash (Cash)")
+
+        from_var = ctk.StringVar(value=f"{trans['from_name']} ({trans['from_type'].capitalize()})")
+        from_dropdown = ctk.CTkOptionMenu(
+            main_frame,
+            variable=from_var,
+            values=all_entities,
+            height=38,
+            font=("Roboto", 13),
+            dropdown_font=("Roboto", 12)
+        )
+        from_dropdown.pack(fill="x", pady=(0, 8))
+
+        # To dropdown
+        to_label = ctk.CTkLabel(main_frame, text="To:", font=("Roboto", 13))
+        to_label.pack(anchor="w", pady=(5, 3))
+
+        to_var = ctk.StringVar(value=f"{trans['to_name']} ({trans['to_type'].capitalize()})")
+        to_dropdown = ctk.CTkOptionMenu(
+            main_frame,
+            variable=to_var,
+            values=all_entities,
+            height=38,
+            font=("Roboto", 13),
+            dropdown_font=("Roboto", 12)
+        )
+        to_dropdown.pack(fill="x", pady=(0, 8))
+
+        # Description field
+        desc_label = ctk.CTkLabel(main_frame, text="Description (Optional):", font=("Roboto", 13))
+        desc_label.pack(anchor="w", pady=(5, 3))
+
+        desc_entry = ctk.CTkEntry(
+            main_frame,
+            placeholder_text="Transaction description",
+            height=38,
+            font=("Roboto", 13)
+        )
+        if trans.get('description'):
+            desc_entry.insert(0, trans['description'])
+        desc_entry.pack(fill="x", pady=(0, 8))
+
+        # Reference field
+        ref_label = ctk.CTkLabel(main_frame, text="Reference (Optional):", font=("Roboto", 13))
+        ref_label.pack(anchor="w", pady=(5, 3))
+
+        ref_entry = ctk.CTkEntry(
+            main_frame,
+            placeholder_text="Reference number",
+            height=38,
+            font=("Roboto", 13)
+        )
+        if trans.get('reference'):
+            ref_entry.insert(0, trans['reference'])
+        ref_entry.pack(fill="x", pady=(0, 10))
+
+        def save_updates():
+            """Save the transaction updates"""
+            # Get values
+            date = date_entry.get().strip()
+            amount = amount_entry.get().strip()
+            from_entity = from_var.get()
+            to_entity = to_var.get()
+            description = desc_entry.get().strip()
+            reference = ref_entry.get().strip()
+
+            # Validate
+            if not all([date, amount, from_entity, to_entity]):
+                messagebox.showerror("Error", "Please fill in all required fields")
+                return
+
+            if from_entity == to_entity:
+                messagebox.showerror("Error", "From and To entities must be different")
+                return
+
+            try:
+                amount = float(amount.replace(',', ''))
+                if amount <= 0:
+                    raise ValueError("Amount must be positive")
+            except ValueError:
+                messagebox.showerror("Error", "Please enter a valid amount")
+                return
+
+            # Parse entity names and types
+            def parse_entity(entity_str):
+                if " (Account)" in entity_str:
+                    return entity_str.replace(" (Account)", ""), "account"
+                elif " (Customer)" in entity_str:
+                    return entity_str.replace(" (Customer)", ""), "customer"
+                else:
+                    return "Cash", "cash"
+
+            from_name, from_type = parse_entity(from_entity)
+            to_name, to_type = parse_entity(to_entity)
+
+            # Delete old transaction (this reverses the balances)
+            try:
+                self.db.delete_transaction(self.selected_transaction_id)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to update transaction: {str(e)}")
+                return
+
+            # Add new transaction with updated values
+            try:
+                self.db.add_transaction(
+                    from_entity=from_name,
+                    from_type=from_type,
+                    to_entity=to_name,
+                    to_type=to_type,
+                    amount=amount,
+                    transaction_date=date,
+                    description=description if description else None,
+                    reference=reference if reference else None
+                )
+
+                messagebox.showinfo("Success", "Transaction updated successfully!")
+                update_dialog.destroy()
+
+                # Clear selection and refresh
+                self.selected_transaction_id = None
+                self.update_btn.configure(state="disabled")
+                self.delete_btn.configure(state="disabled")
+                self.load_transactions()
+
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to update transaction: {str(e)}")
+
+        # Buttons
+        buttons_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        buttons_frame.pack(fill="x", pady=(20, 0))
+
+        save_btn = ctk.CTkButton(
+            buttons_frame,
+            text="✓ SAVE CHANGES",
+            height=50,
+            font=("Roboto", 16, "bold"),
+            fg_color="#2ecc71",
+            hover_color="#27ae60",
+            command=save_updates
+        )
+        save_btn.pack(side="left", fill="x", expand=True, padx=(0, 5))
+
+        cancel_btn = ctk.CTkButton(
+            buttons_frame,
+            text="✕ CANCEL",
+            height=50,
+            font=("Roboto", 16, "bold"),
+            fg_color="#95a5a6",
+            hover_color="#7f8c8d",
+            command=update_dialog.destroy
+        )
+        cancel_btn.pack(side="right", fill="x", expand=True, padx=(5, 0))
