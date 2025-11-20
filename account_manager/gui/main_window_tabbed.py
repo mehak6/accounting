@@ -16,6 +16,7 @@ from gui.transaction_dialog import TransactionDialog
 from gui.reports_window import ReportsWindow
 from gui.ledger_window import LedgerWindow
 from gui.card_components import CardFactory
+from gui.backup_dialog import BackupDialog
 
 
 class MainWindow:
@@ -1658,16 +1659,33 @@ class MainWindow:
         )
         desc_label.pack(pady=30)
 
+        # Buttons frame
+        btn_frame = ctk.CTkFrame(self.tab_reports, fg_color="transparent")
+        btn_frame.pack(pady=20)
+
         # Button to open reports window
         open_btn = ctk.CTkButton(
-            self.tab_reports,
+            btn_frame,
             text="📊 Open Reports Window",
             height=50,
             width=250,
             font=("Roboto", 16),
             command=self.open_reports_window
         )
-        open_btn.pack(pady=20)
+        open_btn.pack(pady=10)
+
+        # Button to open backup dialog
+        backup_btn = ctk.CTkButton(
+            btn_frame,
+            text="💾 Backup & Restore",
+            height=50,
+            width=250,
+            font=("Roboto", 16),
+            fg_color=COLORS['btn_success'],
+            hover_color=COLORS['success_dark'],
+            command=self.open_backup_dialog
+        )
+        backup_btn.pack(pady=10)
 
     def create_transaction_entry_panel(self, parent):
         """Create quick transaction entry panel"""
@@ -2279,6 +2297,10 @@ class MainWindow:
     def open_reports_window(self):
         """Open reports window"""
         ReportsWindow(self.root, self.db)
+
+    def open_backup_dialog(self):
+        """Open backup and restore dialog"""
+        BackupDialog(self.root, self.db)
 
     # Transaction methods
     def parse_entity_selection(self, selection: str) -> tuple:
