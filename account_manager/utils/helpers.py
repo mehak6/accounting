@@ -73,11 +73,32 @@ def format_date(date_str: Union[str, datetime], input_format: str = "%d-%m-%Y",
     if isinstance(date_str, datetime):
         return date_str.strftime(output_format)
 
+    if not date_str:
+        return date_str
+
+    # Try the specified input format first
     try:
         date_obj = datetime.strptime(date_str, input_format)
         return date_obj.strftime(output_format)
     except ValueError:
-        return date_str
+        pass
+
+    # Auto-detect format: try DD-MM-YYYY
+    try:
+        date_obj = datetime.strptime(date_str, "%d-%m-%Y")
+        return date_obj.strftime(output_format)
+    except ValueError:
+        pass
+
+    # Try YYYY-MM-DD
+    try:
+        date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+        return date_obj.strftime(output_format)
+    except ValueError:
+        pass
+
+    # Return original if nothing works
+    return date_str
 
 
 def get_current_date(format_str: str = "%d-%m-%Y") -> str:
@@ -91,6 +112,36 @@ def get_current_date(format_str: str = "%d-%m-%Y") -> str:
         Current date string
     """
     return datetime.now().strftime(format_str)
+
+
+def normalize_date_for_sort(date_str: str) -> str:
+    """
+    Convert any date format to YYYY-MM-DD for proper string sorting
+
+    Args:
+        date_str: Date string in any format
+
+    Returns:
+        Date string in YYYY-MM-DD format for sorting
+    """
+    if not date_str:
+        return ''
+
+    # Try DD-MM-YYYY format
+    try:
+        date_obj = datetime.strptime(date_str, "%d-%m-%Y")
+        return date_obj.strftime("%Y-%m-%d")
+    except ValueError:
+        pass
+
+    # Try YYYY-MM-DD format (already sortable)
+    try:
+        datetime.strptime(date_str, "%Y-%m-%d")
+        return date_str
+    except ValueError:
+        pass
+
+    return date_str
 
 
 def validate_email(email: str) -> bool:
@@ -423,3 +474,199 @@ class DropdownButton:
     def update_values(self, values: List[str]):
         """Update dropdown values"""
         self.values = values
+
+
+# ==================== PDF Export Functions ====================
+
+def export_to_pdf(data: List[Dict], filename: str, title: str, fieldnames: List[str] = None):
+    """
+    Export data to PDF file with professional formatting
+
+    Args:
+        data: List of dictionaries containing data to export
+        filename: Path to save the PDF file
+        title: Title of the report
+        fieldnames: List of field names to include (if None, use all from first row)
+    """
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch, cm
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+    from datetime import datetime
+
+    # Determine if this is a transaction report (needs landscape)
+    is_transaction = fieldnames and 'transaction_date' in fieldnames
+
+    # Create PDF document - use landscape for transactions
+    if is_transaction:
+        doc = SimpleDocTemplate(filename, pagesize=landscape(A4), leftMargin=1*cm, rightMargin=1*cm)
+    else:
+        doc = SimpleDocTemplate(filename, pagesize=A4)
+
+    elements = []
+
+    # Styles
+    styles = getSampleStyleSheet()
+
+    # Custom title style
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=20,
+        textColor=colors.HexColor('#1f77b4'),
+        spaceAfter=20,
+        alignment=TA_CENTER,
+        fontName='Helvetica-Bold'
+    )
+
+    # Add title
+    elements.append(Paragraph(title, title_style))
+
+    # Add generation date
+    date_style = ParagraphStyle(
+        'DateStyle',
+        parent=styles['Normal'],
+        fontSize=9,
+        textColor=colors.grey,
+        alignment=TA_RIGHT,
+        spaceAfter=15
+    )
+    generation_date = f"Generated on: {datetime.now().strftime('%d %B, %Y at %H:%M')}"
+    elements.append(Paragraph(generation_date, date_style))
+    elements.append(Spacer(1, 0.1 * inch))
+
+    if not data:
+        # No data message
+        no_data_style = ParagraphStyle(
+            'NoData',
+            parent=styles['Normal'],
+            fontSize=14,
+            textColor=colors.grey,
+            alignment=TA_CENTER
+        )
+        elements.append(Paragraph("No data available", no_data_style))
+    else:
+        # Determine fieldnames
+        if not fieldnames:
+            fieldnames = list(data[0].keys())
+
+        # Create table data
+        table_data = []
+
+        # Header row with better names
+        header_names = {
+            'id': 'ID',
+            'transaction_date': 'Date',
+            'amount': 'Amount',
+            'from_name': 'From',
+            'to_name': 'To',
+            'description': 'Description',
+            'name': 'Name',
+            'address': 'Address',
+            'phone': 'Phone',
+            'email': 'Email',
+            'balance': 'Balance',
+            'role': 'Role',
+            'department': 'Department'
+        }
+        header_row = [header_names.get(field, field.replace('_', ' ').title()) for field in fieldnames]
+        table_data.append(header_row)
+
+        # Data rows
+        for row in data:
+            table_row = []
+            for field in fieldnames:
+                value = row.get(field, '')
+
+                # Format currency fields
+                if field in ['balance', 'amount'] and value != '':
+                    try:
+                        value = format_currency(float(value))
+                    except:
+                        pass
+
+                # Truncate long descriptions
+                if field == 'description' and len(str(value)) > 30:
+                    value = str(value)[:27] + '...'
+
+                # Truncate long addresses
+                if field == 'address' and len(str(value)) > 25:
+                    value = str(value)[:22] + '...'
+
+                table_row.append(str(value) if value else '-')
+            table_data.append(table_row)
+
+        # Define column widths based on report type
+        if is_transaction:
+            # Transaction report: ID, Date, Amount, From, To, Description
+            col_widths = [0.8*cm, 2.2*cm, 2.5*cm, 5*cm, 5*cm, 6*cm]
+        elif fieldnames and 'address' in fieldnames:
+            # Company report: ID, Name, Address, Phone, Email, Balance
+            col_widths = [1*cm, 4*cm, 4*cm, 2.5*cm, 4*cm, 2.5*cm]
+        elif fieldnames and 'department' in fieldnames:
+            # User report: ID, Name, Email, Role, Department, Balance
+            col_widths = [1*cm, 3.5*cm, 4.5*cm, 2.5*cm, 3*cm, 2.5*cm]
+        else:
+            col_widths = None
+
+        # Create table with fixed widths
+        if col_widths:
+            table = Table(table_data, colWidths=col_widths)
+        else:
+            table = Table(table_data)
+
+        # Table styling
+        table.setStyle(TableStyle([
+            # Header styling
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f77b4')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+            ('TOPPADDING', (0, 0), (-1, 0), 8),
+
+            # Data styling
+            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+            ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('TOPPADDING', (0, 1), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+
+            # Center align ID column
+            ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+
+            # Right align amount/balance columns
+            ('ALIGN', (2, 1), (2, -1), 'RIGHT') if is_transaction else ('ALIGN', (-1, 1), (-1, -1), 'RIGHT'),
+
+            # Grid
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+
+            # Alternating row colors
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),
+
+            # Word wrap for long text
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+
+        elements.append(table)
+
+        # Add footer with count
+        elements.append(Spacer(1, 0.2 * inch))
+        footer_style = ParagraphStyle(
+            'Footer',
+            parent=styles['Normal'],
+            fontSize=9,
+            textColor=colors.grey,
+            alignment=TA_CENTER
+        )
+        elements.append(Paragraph(f"Total Records: {len(data)}", footer_style))
+
+    # Build PDF
+    doc.build(elements)
+
+    return filename

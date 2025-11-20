@@ -8,6 +8,20 @@ import sys
 from datetime import datetime
 from typing import List, Tuple, Optional, Dict, Any
 
+# Import helper for date normalization
+try:
+    from utils.helpers import normalize_date_for_sort
+except ImportError:
+    # Fallback if import fails
+    def normalize_date_for_sort(date_str):
+        if not date_str:
+            return ''
+        if '-' in date_str:
+            parts = date_str.split('-')
+            if len(parts) == 3 and len(parts[0]) <= 2:
+                return f"{parts[2]}-{parts[1]}-{parts[0]}"
+        return date_str
+
 
 class DatabaseManager:
     """Manages SQLite database connections and operations"""
@@ -449,7 +463,7 @@ class DatabaseManager:
         Add a new transaction and update balances
 
         Args:
-            transaction_date: Date in YYYY-MM-DD format
+            transaction_date: Date in DD-MM-YYYY format
             amount: Transaction amount (must be positive)
             from_type: 'company' or 'user'
             from_id: ID of the sender
@@ -537,7 +551,7 @@ class DatabaseManager:
             """
             transaction_id = self.execute_update(
                 query,
-                (datetime.now().strftime('%Y-%m-%d'), amount, 'cash', 0, entity_type, entity_id,
+                (datetime.now().strftime('%d-%m-%Y'), amount, 'cash', 0, entity_type, entity_id,
                  description, 'DEPOSIT')
             )
             
@@ -599,7 +613,7 @@ class DatabaseManager:
             """
             transaction_id = self.execute_update(
                 query,
-                (datetime.now().strftime('%Y-%m-%d'), amount, entity_type, entity_id, 'cash', 0,
+                (datetime.now().strftime('%d-%m-%Y'), amount, entity_type, entity_id, 'cash', 0,
                  description, 'WITHDRAW')
             )
             
@@ -703,9 +717,9 @@ class DatabaseManager:
         """
         # Get all transactions for this entity
         transactions = self.get_transactions_by_entity(entity_type, entity_id)
-        
+
         # Sort by date (oldest first) to calculate running balance
-        transactions.sort(key=lambda x: (x['transaction_date'], x['created_date']))
+        transactions.sort(key=lambda x: (normalize_date_for_sort(x.get('transaction_date', '')), x.get('created_date', '')))
         
         # Get starting balance (should be 0 for new accounts)
         if entity_type == 'company':
@@ -802,6 +816,76 @@ class DatabaseManager:
         except Exception as e:
             self.connection.rollback()
             raise Exception(f"Failed to delete transaction: {e}")
+
+    def delete_all_transactions(self) -> int:
+        """
+        Delete ALL transactions and reset all balances to zero
+        WARNING: This will delete all transaction history and reset all account balances!
+        """
+        try:
+            # Reset all company balances to 0
+            self.connection.execute("UPDATE companies SET balance = 0.00")
+
+            # Reset all user balances to 0
+            self.connection.execute("UPDATE users SET balance = 0.00")
+
+            # Delete all transactions
+            result = self.connection.execute("DELETE FROM transactions")
+            deleted_count = result.rowcount
+
+            self.connection.commit()
+            return deleted_count
+
+        except Exception as e:
+            self.connection.rollback()
+            raise Exception(f"Failed to delete all transactions: {e}")
+
+    def delete_multiple_transactions(self, transaction_ids: list) -> int:
+        """
+        Delete multiple transactions and reverse balance changes for each
+        WARNING: This will affect account balances
+        """
+        if not transaction_ids:
+            return 0
+
+        deleted_count = 0
+        try:
+            for transaction_id in transaction_ids:
+                # Get transaction details first
+                transaction = self.get_transaction(transaction_id)
+                if not transaction:
+                    continue
+
+                # Reverse balance changes
+                amount = transaction['amount']
+                from_type = transaction['from_type']
+                from_id = transaction['from_id']
+                to_type = transaction['to_type']
+                to_id = transaction['to_id']
+
+                # Reverse sender balance (add back)
+                if from_type == 'company':
+                    self.update_company_balance(from_id, amount)
+                elif from_type == 'user':
+                    self.update_user_balance(from_id, amount)
+
+                # Reverse receiver balance (subtract)
+                if to_type == 'company':
+                    self.update_company_balance(to_id, -amount)
+                elif to_type == 'user':
+                    self.update_user_balance(to_id, -amount)
+
+                # Delete transaction
+                query = "DELETE FROM transactions WHERE id = ?"
+                self.execute_update(query, (transaction_id,))
+                deleted_count += 1
+
+            self.connection.commit()
+            return deleted_count
+
+        except Exception as e:
+            self.connection.rollback()
+            raise Exception(f"Failed to delete transactions: {e}")
 
     # ==================== Reporting Operations ====================
 

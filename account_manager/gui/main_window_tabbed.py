@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Optional
 
 from database.db_manager import DatabaseManager
-from utils.helpers import format_currency, format_date, validate_amount, get_current_date, validate_email
+from utils.helpers import format_currency, format_date, validate_amount, get_current_date, validate_email, normalize_date_for_sort
 from gui.company_dialog import CompanyDialog
 from gui.user_dialog import UserDialog
 from gui.transaction_dialog import TransactionDialog
@@ -902,6 +902,10 @@ class MainWindow:
     def create_transactions_tab(self):
         """Create transactions history tab"""
         self.selected_transaction_id = None
+        self.selected_transaction_ids = set()  # For multi-select
+        self.select_all_var = ctk.BooleanVar(value=False)  # For select all checkbox
+        self.transaction_checkboxes = {}  # Store checkbox widgets
+        self.transaction_sort_order = "desc"  # Default: newest first (descending)
 
         # Main container
         main_container = ctk.CTkFrame(self.tab_transactions, corner_radius=0, fg_color="transparent")
@@ -927,67 +931,88 @@ class MainWindow:
         toolbar = ctk.CTkFrame(parent, corner_radius=10, height=60)
         toolbar.pack(fill="x", pady=(0, 10))
 
+        # Left side container
+        left_container = ctk.CTkFrame(toolbar, fg_color="transparent")
+        left_container.pack(side="left", fill="x", expand=True)
+
         # Title
         title = ctk.CTkLabel(
-            toolbar,
+            left_container,
             text="All Transactions",
             font=("Roboto", 20, "bold")
         )
         title.pack(side="left", padx=15)
 
+        # Select All checkbox
+        self.select_all_checkbox = ctk.CTkCheckBox(
+            left_container,
+            text="Select All",
+            variable=self.select_all_var,
+            command=self.toggle_select_all,
+            font=("Roboto", 12, "bold"),
+            checkbox_width=24,
+            checkbox_height=24
+        )
+        self.select_all_checkbox.pack(side="left", padx=10)
+
         # Search entry
         self.transaction_search_entry = ctk.CTkEntry(
-            toolbar,
+            left_container,
             placeholder_text="Search transactions...",
-            width=250,
+            width=200,
             height=35
         )
         self.transaction_search_entry.pack(side="left", padx=10)
 
         # Search button
         search_btn = ctk.CTkButton(
-            toolbar,
-            text="🔍 Search",
-            width=100,
+            left_container,
+            text="🔍",
+            width=50,
             height=35,
             command=self.search_transactions_list
         )
-        search_btn.pack(side="left", padx=5)
+        search_btn.pack(side="left", padx=2)
 
         # Refresh button
         refresh_btn = ctk.CTkButton(
-            toolbar,
-            text="🔄 Refresh",
-            width=100,
+            left_container,
+            text="🔄",
+            width=50,
             height=35,
             command=self.load_transactions_list
         )
-        refresh_btn.pack(side="left", padx=5)
+        refresh_btn.pack(side="left", padx=2)
 
-        # Delete button - Enhanced (red, larger, bold)
-        self.transaction_delete_btn = ctk.CTkButton(
-            toolbar,
-            text="🗑️ DELETE",
-            width=130,
-            height=45,
-            font=("Roboto", 14, "bold"),
-            corner_radius=10,
-            fg_color="#e74c3c",
-            hover_color="#c0392b",
-            border_width=2,
-            border_color="#922b21",
-            command=self.delete_transaction,
-            state="disabled"
+        # Sort order dropdown
+        ctk.CTkLabel(
+            left_container,
+            text="Sort:",
+            font=("Roboto", 12)
+        ).pack(side="left", padx=(15, 5))
+
+        self.sort_order_var = ctk.StringVar(value="Newest First ↓")
+        self.sort_order_dropdown = ctk.CTkOptionMenu(
+            left_container,
+            variable=self.sort_order_var,
+            values=["Newest First ↓", "Oldest First ↑"],
+            width=140,
+            height=35,
+            command=self.change_sort_order
         )
-        self.transaction_delete_btn.pack(side="right", padx=10)
+        self.sort_order_dropdown.pack(side="left", padx=2)
+
+        # Right side container for action buttons
+        right_container = ctk.CTkFrame(toolbar, fg_color="transparent")
+        right_container.pack(side="right")
 
         # Update button - Enhanced (orange, larger, bold)
         self.transaction_update_btn = ctk.CTkButton(
-            toolbar,
+            right_container,
             text="✎ UPDATE",
-            width=130,
+            width=120,
             height=45,
-            font=("Roboto", 14, "bold"),
+            font=("Roboto", 13, "bold"),
             corner_radius=10,
             fg_color="#f39c12",
             hover_color="#d68910",
@@ -996,7 +1021,57 @@ class MainWindow:
             command=self.update_transaction_tab,
             state="disabled"
         )
-        self.transaction_update_btn.pack(side="right", padx=10)
+        self.transaction_update_btn.pack(side="left", padx=5)
+
+        # Delete button - Enhanced (red, larger, bold)
+        self.transaction_delete_btn = ctk.CTkButton(
+            right_container,
+            text="🗑️ DELETE",
+            width=120,
+            height=45,
+            font=("Roboto", 13, "bold"),
+            corner_radius=10,
+            fg_color="#e74c3c",
+            hover_color="#c0392b",
+            border_width=2,
+            border_color="#922b21",
+            command=self.delete_transaction,
+            state="disabled"
+        )
+        self.transaction_delete_btn.pack(side="left", padx=5)
+
+        # Delete Selected button - For multi-select deletion
+        self.transaction_delete_selected_btn = ctk.CTkButton(
+            right_container,
+            text="🗑️ DELETE SELECTED",
+            width=150,
+            height=45,
+            font=("Roboto", 13, "bold"),
+            corner_radius=10,
+            fg_color="#c0392b",
+            hover_color="#a93226",
+            border_width=2,
+            border_color="#7b241c",
+            command=self.delete_selected_transactions,
+            state="disabled"
+        )
+        self.transaction_delete_selected_btn.pack(side="left", padx=5)
+
+        # Delete ALL button - Nuclear option
+        self.transaction_delete_all_btn = ctk.CTkButton(
+            right_container,
+            text="⚠️ DELETE ALL",
+            width=140,
+            height=45,
+            font=("Roboto", 13, "bold"),
+            corner_radius=10,
+            fg_color="#8b0000",
+            hover_color="#640000",
+            border_width=2,
+            border_color="#4a0000",
+            command=self.delete_all_transactions
+        )
+        self.transaction_delete_all_btn.pack(side="left", padx=5)
 
     def create_transaction_list_panel(self, parent):
         """Create scrollable transaction list"""
@@ -1099,8 +1174,22 @@ class MainWindow:
         for widget in self.transaction_list.winfo_children():
             widget.destroy()
 
+        # Clear checkbox tracking
+        self.transaction_checkboxes.clear()
+
+        # Reset select all checkbox
+        self.select_all_var.set(False)
+
         # Get transactions
         transactions = self.db.get_all_transactions()
+
+        # Sort transactions based on current sort order
+        if self.transaction_sort_order == "desc":
+            # Newest first (descending by date, then by ID)
+            transactions.sort(key=lambda t: (normalize_date_for_sort(t.get('transaction_date', '')), t.get('id', 0)), reverse=True)
+        else:
+            # Oldest first (ascending by date, then by ID)
+            transactions.sort(key=lambda t: (normalize_date_for_sort(t.get('transaction_date', '')), t.get('id', 0)))
 
         # Update count
         self.transaction_count_label.configure(text=f"{len(transactions)} transactions")
@@ -1119,17 +1208,35 @@ class MainWindow:
         for trans in transactions:
             self.create_transaction_card(trans)
 
+        # Update delete selected button state
+        self.update_delete_selected_button_state()
+
     def create_transaction_card(self, trans: dict):
-        """Create a transaction display card"""
+        """Create a transaction display card with checkbox"""
         card = ctk.CTkFrame(self.transaction_list, corner_radius=8)
         card.pack(fill="x", pady=5, padx=5)
 
-        # Make card clickable
-        card.bind("<Button-1>", lambda e, t=trans: self.select_transaction(t))
+        # Main horizontal layout: checkbox on left, content on right
+        card_layout = ctk.CTkFrame(card, fg_color="transparent")
+        card_layout.pack(fill="x", padx=8, pady=8)
 
-        # Card content
-        content = ctk.CTkFrame(card, fg_color="transparent")
-        content.pack(fill="x", padx=12, pady=12)
+        # Checkbox on the left
+        checkbox_var = ctk.BooleanVar(value=trans['id'] in self.selected_transaction_ids)
+        checkbox = ctk.CTkCheckBox(
+            card_layout,
+            text="",
+            variable=checkbox_var,
+            command=lambda: self.toggle_transaction_selection(trans['id'], checkbox_var),
+            width=30,
+            checkbox_width=20,
+            checkbox_height=20
+        )
+        checkbox.pack(side="left", padx=(5, 10))
+        self.transaction_checkboxes[trans['id']] = (checkbox, checkbox_var)
+
+        # Card content on the right
+        content = ctk.CTkFrame(card_layout, fg_color="transparent")
+        content.pack(side="left", fill="x", expand=True)
         content.bind("<Button-1>", lambda e, t=trans: self.select_transaction(t))
 
         # Top row: Date and ID
@@ -1238,8 +1345,22 @@ class MainWindow:
         for widget in self.transaction_list.winfo_children():
             widget.destroy()
 
+        # Clear checkbox tracking
+        self.transaction_checkboxes.clear()
+
+        # Reset select all checkbox
+        self.select_all_var.set(False)
+
         # Search
         transactions = self.db.search_transactions(search_term)
+
+        # Sort transactions based on current sort order
+        if self.transaction_sort_order == "desc":
+            # Newest first (descending by date, then by ID)
+            transactions.sort(key=lambda t: (normalize_date_for_sort(t.get('transaction_date', '')), t.get('id', 0)), reverse=True)
+        else:
+            # Oldest first (ascending by date, then by ID)
+            transactions.sort(key=lambda t: (normalize_date_for_sort(t.get('transaction_date', '')), t.get('id', 0)))
 
         # Update count
         self.transaction_count_label.configure(text=f"{len(transactions)} results")
@@ -1257,6 +1378,9 @@ class MainWindow:
         # Display results
         for trans in transactions:
             self.create_transaction_card(trans)
+
+        # Update delete selected button state
+        self.update_delete_selected_button_state()
 
     def delete_transaction(self):
         """Delete selected transaction"""
@@ -2071,6 +2195,10 @@ class MainWindow:
 
     def load_entity_data(self):
         """Load entities for dropdowns"""
+        # Save current selections
+        current_from = self.from_var.get()
+        current_to = self.to_var.get()
+
         entities = []
 
         # Get all companies
@@ -2095,8 +2223,15 @@ class MainWindow:
         self.from_dropdown.configure(values=entities)
         self.to_dropdown.configure(values=entities)
 
-        if len(entities) > 0:
+        # Restore previous selections if they still exist in the list
+        if current_from in entities:
+            self.from_var.set(current_from)
+        elif len(entities) > 0:
             self.from_var.set(entities[0])
+
+        if current_to in entities:
+            self.to_var.set(current_to)
+        elif len(entities) > 0:
             self.to_var.set(entities[0])
 
     def load_balance_data(self):
@@ -2310,7 +2445,11 @@ class MainWindow:
             )
 
             messagebox.showinfo("Success", "Transaction completed successfully!")
+
+            # Clear the form (From/To selections will be preserved by load_entity_data)
             self.clear_transaction_form()
+
+            # Refresh data (load_entity_data will preserve the current From/To selections)
             self.load_data()
 
         except Exception as e:
@@ -2498,18 +2637,156 @@ class MainWindow:
             messagebox.showerror("Error", f"{op_text} failed: {str(e)}")
 
     def clear_transaction_form(self):
-        """Clear transaction form"""
+        """Clear transaction form (but preserve From/To selections for quick successive transactions)"""
         self.editing_transaction_id = None
 
+        # Clear only amount, description, and reference
         self.amount_entry.delete(0, "end")
         self.desc_entry.delete(0, "end")
         self.ref_entry.delete(0, "end")
+
+        # Reset date to today
         self.date_entry.delete(0, "end")
         self.date_entry.insert(0, get_current_date())
 
-        self.from_var.set("Select...")
-        self.to_var.set("Select...")
+        # NOTE: We do NOT reset from_var and to_var here anymore
+        # This allows users to quickly enter multiple transactions between the same parties
+        # If you want to reset, manually change the dropdowns
 
         # Enable submit, disable update
         self.submit_btn.configure(state="normal")
         # self.update_transaction_btn.configure(state="disabled")  # Button removed from dashboard
+
+    # ==================== Multi-Select Transaction Methods ====================
+
+    def toggle_transaction_selection(self, transaction_id: int, checkbox_var: ctk.BooleanVar):
+        """Toggle selection of a single transaction"""
+        if checkbox_var.get():
+            self.selected_transaction_ids.add(transaction_id)
+        else:
+            self.selected_transaction_ids.discard(transaction_id)
+            # Uncheck select all if not all are selected
+            self.select_all_var.set(False)
+
+        self.update_delete_selected_button_state()
+
+    def toggle_select_all(self):
+        """Toggle selection of all transactions"""
+        select_all = self.select_all_var.get()
+
+        if select_all:
+            # Select all transactions
+            for trans_id, (checkbox, checkbox_var) in self.transaction_checkboxes.items():
+                checkbox_var.set(True)
+                self.selected_transaction_ids.add(trans_id)
+        else:
+            # Deselect all transactions
+            for trans_id, (checkbox, checkbox_var) in self.transaction_checkboxes.items():
+                checkbox_var.set(False)
+            self.selected_transaction_ids.clear()
+
+        self.update_delete_selected_button_state()
+
+    def update_delete_selected_button_state(self):
+        """Enable/disable delete selected button based on selection"""
+        if len(self.selected_transaction_ids) > 0:
+            self.transaction_delete_selected_btn.configure(state="normal")
+        else:
+            self.transaction_delete_selected_btn.configure(state="disabled")
+
+    def delete_selected_transactions(self):
+        """Delete multiple selected transactions"""
+        if not self.selected_transaction_ids:
+            messagebox.showerror("Error", "No transactions selected")
+            return
+
+        # Confirm deletion
+        count = len(self.selected_transaction_ids)
+        confirm_msg = (
+            f"Delete {count} selected transaction(s)?\n\n"
+            f"WARNING: This will reverse all balance changes for these transactions!\n"
+            f"This action cannot be undone!"
+        )
+
+        if not messagebox.askyesno("Confirm Deletion", confirm_msg):
+            return
+
+        # Delete from database
+        try:
+            deleted_count = self.db.delete_multiple_transactions(list(self.selected_transaction_ids))
+            messagebox.showinfo("Success", f"Successfully deleted {deleted_count} transaction(s)!")
+
+            # Clear selections
+            self.selected_transaction_ids.clear()
+            self.selected_transaction_id = None
+            self.transaction_update_btn.configure(state="disabled")
+            self.transaction_delete_btn.configure(state="disabled")
+
+            # Refresh list
+            self.load_transactions_list()
+            self.refresh_dashboard()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to delete transactions: {str(e)}")
+
+    def delete_all_transactions(self):
+        """Delete ALL transactions"""
+        # Get transaction count
+        transactions = self.db.get_all_transactions()
+        count = len(transactions)
+
+        if count == 0:
+            messagebox.showinfo("Info", "No transactions to delete")
+            return
+
+        # Strong confirmation with warning
+        confirm_msg = (
+            f"⚠️ DANGER: DELETE ALL TRANSACTIONS ⚠️\n\n"
+            f"This will:\n"
+            f"• Delete ALL {count} transaction(s)\n"
+            f"• Reset ALL company balances to ₹0.00\n"
+            f"• Reset ALL user balances to ₹0.00\n"
+            f"• Erase complete transaction history\n\n"
+            f"THIS ACTION CANNOT BE UNDONE!\n\n"
+            f"Are you ABSOLUTELY SURE you want to proceed?"
+        )
+
+        if not messagebox.askyesno("⚠️ CONFIRM DELETE ALL ⚠️", confirm_msg):
+            return
+
+        # Second confirmation
+        if not messagebox.askyesno("Final Confirmation", "This is your FINAL warning. Delete everything?"):
+            return
+
+        # Delete from database
+        try:
+            deleted_count = self.db.delete_all_transactions()
+            messagebox.showinfo("Success", f"Successfully deleted all {deleted_count} transaction(s) and reset all balances!")
+
+            # Clear selections
+            self.selected_transaction_ids.clear()
+            self.selected_transaction_id = None
+            self.transaction_update_btn.configure(state="disabled")
+            self.transaction_delete_btn.configure(state="disabled")
+
+            # Refresh all data
+            self.load_transactions_list()
+            self.refresh_dashboard()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to delete all transactions: {str(e)}")
+
+    def change_sort_order(self, choice: str):
+        """Change transaction sort order"""
+        if choice == "Newest First ↓":
+            self.transaction_sort_order = "desc"
+        else:  # "Oldest First ↑"
+            self.transaction_sort_order = "asc"
+
+        # Reload transactions with new sort order
+        if self.transaction_search_entry.get().strip():
+            # If search is active, re-run search with new sort
+            self.search_transactions_list()
+        else:
+            # Otherwise reload all transactions
+            self.load_transactions_list()

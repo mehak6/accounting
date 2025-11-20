@@ -7,7 +7,7 @@ from tkinter import messagebox, filedialog
 from typing import Dict, Any, List
 
 from database.db_manager import DatabaseManager
-from utils.helpers import format_currency, format_date, export_to_csv
+from utils.helpers import format_currency, format_date, export_to_pdf, normalize_date_for_sort
 
 
 class ReportsWindow:
@@ -23,6 +23,7 @@ class ReportsWindow:
         """
         self.parent = parent
         self.db = db
+        self.transaction_sort_order = "desc"  # Default: newest first
 
         # Create window
         self.window = ctk.CTkToplevel(parent)
@@ -53,9 +54,11 @@ class ReportsWindow:
         # Export button
         export_btn = ctk.CTkButton(
             title_bar,
-            text="📥 Export to CSV",
+            text="📄 Export to PDF",
             height=35,
             width=150,
+            fg_color="#e74c3c",
+            hover_color="#c0392b",
             command=self.export_report
         )
         export_btn.pack(side="right", padx=20)
@@ -193,12 +196,37 @@ class ReportsWindow:
         """Create transactions report tab"""
         tab = self.tabview.tab("Transactions")
 
+        # Header with title and sort dropdown
+        header_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        header_frame.pack(fill="x", padx=20, pady=(15, 10))
+
         # Title
         ctk.CTkLabel(
-            tab,
-            text="Recent Transactions",
+            header_frame,
+            text="Transaction History",
             font=("Roboto", 18, "bold")
-        ).pack(pady=(15, 10))
+        ).pack(side="left")
+
+        # Sort dropdown
+        sort_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+        sort_frame.pack(side="right")
+
+        ctk.CTkLabel(
+            sort_frame,
+            text="Sort:",
+            font=("Roboto", 12)
+        ).pack(side="left", padx=(0, 5))
+
+        self.trans_sort_var = ctk.StringVar(value="Newest First ↓")
+        self.trans_sort_dropdown = ctk.CTkOptionMenu(
+            sort_frame,
+            variable=self.trans_sort_var,
+            values=["Newest First ↓", "Oldest First ↑"],
+            width=140,
+            height=30,
+            command=self.change_transaction_sort
+        )
+        self.trans_sort_dropdown.pack(side="left")
 
         # Scrollable list
         self.transactions_list = ctk.CTkScrollableFrame(tab, corner_radius=8)
@@ -331,12 +359,12 @@ class ReportsWindow:
         ).pack(side="right", padx=10)
 
     def load_transactions_report(self):
-        """Load recent transactions report"""
+        """Load transactions report with sorting"""
         # Clear existing
         for widget in self.transactions_list.winfo_children():
             widget.destroy()
 
-        transactions = self.db.get_all_transactions(limit=50)
+        transactions = self.db.get_all_transactions()
 
         if not transactions:
             ctk.CTkLabel(
@@ -346,9 +374,23 @@ class ReportsWindow:
             ).pack(pady=20)
             return
 
+        # Sort transactions based on current sort order
+        if self.transaction_sort_order == "desc":
+            transactions.sort(key=lambda t: (normalize_date_for_sort(t.get('transaction_date', '')), t.get('id', 0)), reverse=True)
+        else:
+            transactions.sort(key=lambda t: (normalize_date_for_sort(t.get('transaction_date', '')), t.get('id', 0)))
+
         # Display each transaction
         for trans in transactions:
             self.create_transaction_report_card(trans)
+
+    def change_transaction_sort(self, choice: str):
+        """Change transaction sort order"""
+        if choice == "Newest First ↓":
+            self.transaction_sort_order = "desc"
+        else:
+            self.transaction_sort_order = "asc"
+        self.load_transactions_report()
 
     def create_transaction_report_card(self, trans: Dict[str, Any]):
         """Create a transaction report card"""
@@ -396,20 +438,20 @@ class ReportsWindow:
         ).pack(anchor="w", pady=(5, 0))
 
     def export_report(self):
-        """Export current report to CSV"""
+        """Export current report to PDF"""
         # Get current tab
         current_tab = self.tabview.get()
 
         # Determine what to export
         if current_tab == "Summary":
-            messagebox.showinfo("Info", "Please select a specific report tab to export")
+            messagebox.showinfo("Info", "Please select a specific report tab to export (Companies, Users, or Transactions)")
             return
 
         # Ask for file location
         filename = filedialog.asksaveasfilename(
-            defaultextension=".csv",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
-            title="Export Report"
+            defaultextension=".pdf",
+            filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")],
+            title="Export Report to PDF"
         )
 
         if not filename:
@@ -419,17 +461,24 @@ class ReportsWindow:
             if current_tab == "Companies":
                 data = self.db.get_all_companies()
                 fieldnames = ['id', 'name', 'address', 'phone', 'email', 'balance']
+                title = "Company Balances Report"
 
             elif current_tab == "Users":
                 data = self.db.get_all_users()
-                fieldnames = ['id', 'name', 'email', 'role', 'department', 'company_id', 'balance']
+                fieldnames = ['id', 'name', 'email', 'role', 'department', 'balance']
+                title = "User Balances Report"
 
             elif current_tab == "Transactions":
                 data = self.db.get_all_transactions()
-                fieldnames = ['id', 'transaction_date', 'amount', 'from_type', 'from_name',
-                             'to_type', 'to_name', 'description', 'reference']
+                # Sort by current sort order
+                if self.transaction_sort_order == "desc":
+                    data.sort(key=lambda t: (normalize_date_for_sort(t.get('transaction_date', '')), t.get('id', 0)), reverse=True)
+                else:
+                    data.sort(key=lambda t: (normalize_date_for_sort(t.get('transaction_date', '')), t.get('id', 0)))
+                fieldnames = ['id', 'transaction_date', 'amount', 'from_name', 'to_name', 'description']
+                title = "Transaction History Report"
 
-            export_to_csv(data, filename, fieldnames)
+            export_to_pdf(data, filename, title, fieldnames)
             messagebox.showinfo("Success", f"Report exported successfully to:\n{filename}")
 
         except Exception as e:

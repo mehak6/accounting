@@ -984,7 +984,7 @@ class MainWindow:
             anchor="w"
         ).pack(anchor="w")
 
-        date_text = format_date(trans['transaction_date'], "%Y-%m-%d", "%b %d, %Y")
+        date_text = format_date(trans['transaction_date'], "%d-%m-%Y", "%d %b, %Y")
         ctk.CTkLabel(
             left_frame,
             text=date_text,

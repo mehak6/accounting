@@ -8,7 +8,7 @@ from typing import Optional, Dict, Any, List
 from collections import defaultdict
 
 from database.db_manager import DatabaseManager
-from utils.helpers import format_currency, format_date
+from utils.helpers import format_currency, format_date, normalize_date_for_sort
 
 
 class LedgerWindow(ctk.CTkToplevel):
@@ -33,6 +33,7 @@ class LedgerWindow(ctk.CTkToplevel):
         self.entity_name = entity_name
         self.view_mode = "grouped"  # "grouped" or "chronological"
         self.expanded_groups = set()  # Track which groups are expanded
+        self.sort_order = "desc"  # "desc" (newest first) or "asc" (oldest first)
 
         # Window setup
         self.title(f"Ledger - {entity_name}")
@@ -149,6 +150,25 @@ class LedgerWindow(ctk.CTkToplevel):
         )
         self.chrono_btn.pack(side="left", padx=5, pady=10)
 
+        # Sort order dropdown
+        sort_label = ctk.CTkLabel(
+            toggle_frame,
+            text="Sort:",
+            font=("Roboto", 14, "bold")
+        )
+        sort_label.pack(side="left", padx=(30, 5), pady=15)
+
+        self.sort_order_var = ctk.StringVar(value="Newest First ↓")
+        self.sort_dropdown = ctk.CTkOptionMenu(
+            toggle_frame,
+            variable=self.sort_order_var,
+            values=["Newest First ↓", "Oldest First ↑"],
+            width=140,
+            height=40,
+            command=self.change_sort_order
+        )
+        self.sort_dropdown.pack(side="left", padx=5, pady=10)
+
     def switch_view(self, mode: str):
         """Switch between grouped and chronological view"""
         self.view_mode = mode
@@ -215,6 +235,14 @@ class LedgerWindow(ctk.CTkToplevel):
                 )
                 no_data_label.pack(pady=50)
                 return
+
+            # Sort entries based on sort order
+            if self.sort_order == "desc":
+                # Newest first (descending by date)
+                ledger_entries.sort(key=lambda e: (normalize_date_for_sort(e.get('date', '')), e.get('id', 0)), reverse=True)
+            else:
+                # Oldest first (ascending by date)
+                ledger_entries.sort(key=lambda e: (normalize_date_for_sort(e.get('date', '')), e.get('id', 0)))
 
             # Display based on view mode
             if self.view_mode == "grouped":
@@ -561,3 +589,13 @@ class LedgerWindow(ctk.CTkToplevel):
             font=("Roboto", 14)
         )
         close_btn.pack(pady=(30, 20))
+
+    def change_sort_order(self, choice: str):
+        """Change ledger sort order"""
+        if choice == "Newest First ↓":
+            self.sort_order = "desc"
+        else:  # "Oldest First ↑"
+            self.sort_order = "asc"
+
+        # Reload ledger with new sort order
+        self.load_ledger_data()
