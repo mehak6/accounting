@@ -8,6 +8,7 @@ from typing import Dict, Any, List
 
 from database.db_manager import DatabaseManager
 from utils.helpers import format_currency, format_date, export_to_pdf, normalize_date_for_sort
+from gui.card_components import CardFactory
 
 
 class ReportsWindow:
@@ -143,24 +144,7 @@ class ReportsWindow:
 
     def create_summary_card(self, parent, title: str, value: str, color: str) -> ctk.CTkLabel:
         """Create a summary statistics card"""
-        card = ctk.CTkFrame(parent, corner_radius=10)
-        card.pack(side="left", fill="both", expand=True, padx=10)
-
-        ctk.CTkLabel(
-            card,
-            text=title,
-            font=("Roboto", 14)
-        ).pack(pady=(15, 5))
-
-        value_label = ctk.CTkLabel(
-            card,
-            text=value,
-            font=("Roboto", 28, "bold"),
-            text_color=color
-        )
-        value_label.pack(pady=(0, 15))
-
-        return value_label
+        return CardFactory.create_summary_card(parent, title, value, color)
 
     def create_companies_tab(self):
         """Create companies report tab"""
@@ -324,39 +308,7 @@ class ReportsWindow:
 
     def create_entity_report_card(self, parent, name: str, balance: float, detail: str):
         """Create an entity report card"""
-        card = ctk.CTkFrame(parent, corner_radius=8)
-        card.pack(fill="x", pady=5, padx=5)
-
-        content = ctk.CTkFrame(card, fg_color="transparent")
-        content.pack(fill="x", padx=15, pady=12)
-
-        # Left: Name and detail
-        left = ctk.CTkFrame(content, fg_color="transparent")
-        left.pack(side="left", fill="both", expand=True)
-
-        ctk.CTkLabel(
-            left,
-            text=name,
-            font=("Roboto", 15, "bold"),
-            anchor="w"
-        ).pack(anchor="w")
-
-        ctk.CTkLabel(
-            left,
-            text=detail,
-            font=("Roboto", 11),
-            text_color="gray",
-            anchor="w"
-        ).pack(anchor="w")
-
-        # Right: Balance
-        balance_color = "green" if balance >= 0 else "red"
-        ctk.CTkLabel(
-            content,
-            text=format_currency(balance),
-            font=("Roboto", 18, "bold"),
-            text_color=balance_color
-        ).pack(side="right", padx=10)
+        CardFactory.create_report_entity_card(parent, name, balance, detail)
 
     def load_transactions_report(self):
         """Load transactions report with sorting"""
@@ -394,48 +346,7 @@ class ReportsWindow:
 
     def create_transaction_report_card(self, trans: Dict[str, Any]):
         """Create a transaction report card"""
-        card = ctk.CTkFrame(self.transactions_list, corner_radius=8)
-        card.pack(fill="x", pady=5, padx=5)
-
-        content = ctk.CTkFrame(card, fg_color="transparent")
-        content.pack(fill="x", padx=15, pady=10)
-
-        # Top: Date and ID
-        top = ctk.CTkFrame(content, fg_color="transparent")
-        top.pack(fill="x")
-
-        date_text = format_date(trans['transaction_date'], "%d-%m-%Y", "%d %b, %Y")
-        ctk.CTkLabel(
-            top,
-            text=date_text,
-            font=("Roboto", 11),
-            text_color="gray"
-        ).pack(side="left")
-
-        ctk.CTkLabel(
-            top,
-            text=f"ID: {trans['id']}",
-            font=("Roboto", 10),
-            text_color="gray"
-        ).pack(side="right")
-
-        # Middle: From -> To
-        from_to = f"{trans['from_name']} → {trans['to_name']}"
-        ctk.CTkLabel(
-            content,
-            text=from_to,
-            font=("Roboto", 14, "bold"),
-            anchor="w"
-        ).pack(anchor="w", pady=(5, 0))
-
-        # Bottom: Amount
-        ctk.CTkLabel(
-            content,
-            text=format_currency(trans['amount']),
-            font=("Roboto", 16, "bold"),
-            text_color="green",
-            anchor="w"
-        ).pack(anchor="w", pady=(5, 0))
+        CardFactory.create_transaction_card(self.transactions_list, trans)
 
     def export_report(self):
         """Export current report to PDF"""

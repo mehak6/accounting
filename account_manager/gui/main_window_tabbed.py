@@ -8,12 +8,14 @@ from datetime import datetime
 from typing import Optional
 
 from database.db_manager import DatabaseManager
-from utils.helpers import format_currency, format_date, validate_amount, get_current_date, validate_email, normalize_date_for_sort
+from utils.helpers import format_currency, format_date, validate_amount, get_current_date, validate_email, normalize_date_for_sort, validate_name, validate_phone, handle_error, show_success, show_warning, confirm_action
+from utils.config import COLORS, FONTS, SIZES, get_balance_color
 from gui.company_dialog import CompanyDialog
 from gui.user_dialog import UserDialog
 from gui.transaction_dialog import TransactionDialog
 from gui.reports_window import ReportsWindow
 from gui.ledger_window import LedgerWindow
+from gui.card_components import CardFactory
 
 
 class MainWindow:
@@ -260,59 +262,19 @@ class MainWindow:
 
     def create_company_card(self, company: dict):
         """Create a company display card"""
-        card = ctk.CTkFrame(self.company_list, corner_radius=8)
-        card.pack(fill="x", pady=5, padx=5)
-
-        # Make card clickable
-        card.bind("<Button-1>", lambda e, c=company: self.select_company(c))
-
-        # Company info
-        info_frame = ctk.CTkFrame(card, fg_color="transparent")
-        info_frame.pack(fill="x", padx=10, pady=10)
-        info_frame.bind("<Button-1>", lambda e, c=company: self.select_company(c))
-
-        # Name
-        name_label = ctk.CTkLabel(
-            info_frame,
-            text=company['name'],
-            font=("Roboto", 15, "bold"),
-            anchor="w"
-        )
-        name_label.pack(anchor="w")
-        name_label.bind("<Button-1>", lambda e, c=company: self.select_company(c))
-
-        # Balance
-        balance = company.get('balance', 0.0)
-        balance_text = format_currency(balance)
-        balance_color = "green" if balance >= 0 else "red"
-
-        balance_label = ctk.CTkLabel(
-            info_frame,
-            text=f"Balance: {balance_text}",
-            font=("Roboto", 13),
-            text_color=balance_color,
-            anchor="w"
-        )
-        balance_label.pack(anchor="w")
-        balance_label.bind("<Button-1>", lambda e, c=company: self.select_company(c))
-
-        # Contact info if available
-        contact_parts = []
+        details = []
         if company.get('email'):
-            contact_parts.append(company['email'])
+            details.append(company['email'])
         if company.get('phone'):
-            contact_parts.append(company['phone'])
+            details.append(company['phone'])
 
-        if contact_parts:
-            contact_label = ctk.CTkLabel(
-                info_frame,
-                text=" | ".join(contact_parts),
-                font=("Roboto", 11),
-                text_color="gray",
-                anchor="w"
-            )
-            contact_label.pack(anchor="w")
-            contact_label.bind("<Button-1>", lambda e, c=company: self.select_company(c))
+        CardFactory.create_entity_card(
+            self.company_list,
+            company['name'],
+            company.get('balance', 0.0),
+            details,
+            on_click=lambda c=company: self.select_company(c)
+        )
 
     def select_company(self, company: dict):
         """Select a company to edit"""
@@ -340,19 +302,26 @@ class MainWindow:
 
     def add_company(self):
         """Add new company"""
-        # Validate inputs
-        name = self.company_name_entry.get().strip()
-        if not name:
-            messagebox.showerror("Error", "Company name is required")
+        # Validate name
+        name_input = self.company_name_entry.get().strip()
+        is_valid, result = validate_name(name_input)
+        if not is_valid:
+            show_warning(result)
             return
+        name = result
 
         address = self.company_address_entry.get().strip()
         phone = self.company_phone_entry.get().strip()
         email = self.company_email_entry.get().strip()
 
+        # Validate phone if provided
+        if phone and not validate_phone(phone):
+            show_warning("Invalid phone number format")
+            return
+
         # Validate email if provided
         if email and not validate_email(email):
-            messagebox.showerror("Error", "Invalid email address")
+            show_warning("Invalid email address")
             return
 
         # Add to database
@@ -364,33 +333,40 @@ class MainWindow:
                 email=email
             )
 
-            messagebox.showinfo("Success", f"Company '{name}' added successfully!")
+            show_success(f"Company '{name}' added successfully!")
             self.clear_company_form()
             self.load_companies()
             self.refresh_dashboard()
 
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to add company: {str(e)}")
+            handle_error(e, "Failed to add company")
 
     def update_company(self):
         """Update selected company"""
         if not self.selected_company_id:
-            messagebox.showerror("Error", "No company selected")
+            show_warning("No company selected")
             return
 
-        # Validate inputs
-        name = self.company_name_entry.get().strip()
-        if not name:
-            messagebox.showerror("Error", "Company name is required")
+        # Validate name
+        name_input = self.company_name_entry.get().strip()
+        is_valid, result = validate_name(name_input)
+        if not is_valid:
+            show_warning(result)
             return
+        name = result
 
         address = self.company_address_entry.get().strip()
         phone = self.company_phone_entry.get().strip()
         email = self.company_email_entry.get().strip()
 
+        # Validate phone if provided
+        if phone and not validate_phone(phone):
+            show_warning("Invalid phone number format")
+            return
+
         # Validate email if provided
         if email and not validate_email(email):
-            messagebox.showerror("Error", "Invalid email address")
+            show_warning("Invalid email address")
             return
 
         # Update in database
@@ -403,43 +379,43 @@ class MainWindow:
                 email=email
             )
 
-            messagebox.showinfo("Success", f"Company '{name}' updated successfully!")
+            show_success(f"Company '{name}' updated successfully!")
             self.clear_company_form()
             self.load_companies()
             self.refresh_dashboard()
 
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to update company: {str(e)}")
+            handle_error(e, "Failed to update company")
 
     def delete_company(self):
         """Delete selected company"""
         if not self.selected_company_id:
-            messagebox.showerror("Error", "No company selected")
+            show_warning("No company selected")
             return
 
         company = self.db.get_company(self.selected_company_id)
         if not company:
-            messagebox.showerror("Error", "Company not found")
+            show_warning("Company not found")
             return
 
         # Confirm deletion
-        if not messagebox.askyesno(
-            "Confirm Deletion",
+        if not confirm_action(
             f"Are you sure you want to delete '{company['name']}'?\n\n"
-            f"WARNING: This action cannot be undone!"
+            f"WARNING: This action cannot be undone!",
+            "Confirm Deletion"
         ):
             return
 
         # Delete from database
         try:
             self.db.delete_company(self.selected_company_id)
-            messagebox.showinfo("Success", f"Company '{company['name']}' deleted successfully!")
+            show_success(f"Company '{company['name']}' deleted successfully!")
             self.clear_company_form()
             self.load_companies()
             self.refresh_dashboard()
 
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to delete company: {str(e)}")
+            handle_error(e, "Failed to delete company")
 
     def clear_company_form(self):
         """Clear form and reset selection"""
@@ -657,76 +633,27 @@ class MainWindow:
 
     def create_user_card(self, user: dict):
         """Create a user display card"""
-        card = ctk.CTkFrame(self.user_list, corner_radius=8)
-        card.pack(fill="x", pady=5, padx=5)
-
-        # Make card clickable
-        card.bind("<Button-1>", lambda e, u=user: self.select_user(u))
-
-        # User info
-        info_frame = ctk.CTkFrame(card, fg_color="transparent")
-        info_frame.pack(fill="x", padx=10, pady=10)
-        info_frame.bind("<Button-1>", lambda e, u=user: self.select_user(u))
-
-        # Name
-        name_label = ctk.CTkLabel(
-            info_frame,
-            text=user['name'],
-            font=("Roboto", 15, "bold"),
-            anchor="w"
-        )
-        name_label.pack(anchor="w")
-        name_label.bind("<Button-1>", lambda e, u=user: self.select_user(u))
-
-        # Company name
+        # Get company name
         company_text = "No company"
         if user.get('company_id'):
             company = self.db.get_company(user['company_id'])
             if company:
                 company_text = f"Company: {company['name']}"
 
-        company_label = ctk.CTkLabel(
-            info_frame,
-            text=company_text,
-            font=("Roboto", 12),
-            text_color="gray",
-            anchor="w"
-        )
-        company_label.pack(anchor="w")
-        company_label.bind("<Button-1>", lambda e, u=user: self.select_user(u))
-
-        # Balance
-        balance = user.get('balance', 0.0)
-        balance_text = format_currency(balance)
-        balance_color = "green" if balance >= 0 else "red"
-
-        balance_label = ctk.CTkLabel(
-            info_frame,
-            text=f"Balance: {balance_text}",
-            font=("Roboto", 13),
-            text_color=balance_color,
-            anchor="w"
-        )
-        balance_label.pack(anchor="w")
-        balance_label.bind("<Button-1>", lambda e, u=user: self.select_user(u))
-
-        # Role/Department if available
-        details = []
+        # Build details list
+        details = [company_text]
         if user.get('role'):
             details.append(user['role'])
         if user.get('department'):
             details.append(user['department'])
 
-        if details:
-            detail_label = ctk.CTkLabel(
-                info_frame,
-                text=" | ".join(details),
-                font=("Roboto", 11),
-                text_color="gray",
-                anchor="w"
-            )
-            detail_label.pack(anchor="w")
-            detail_label.bind("<Button-1>", lambda e, u=user: self.select_user(u))
+        CardFactory.create_entity_card(
+            self.user_list,
+            user['name'],
+            user.get('balance', 0.0),
+            details,
+            on_click=lambda u=user: self.select_user(u)
+        )
 
     def select_user(self, user: dict):
         """Select a user to edit"""

@@ -5,6 +5,7 @@ Database Manager - Handles all SQLite database operations
 import sqlite3
 import os
 import sys
+import shutil
 from datetime import datetime
 from typing import List, Tuple, Optional, Dict, Any
 
@@ -294,20 +295,22 @@ class DatabaseManager:
         cursor.execute(query, params)
         return cursor.fetchall()
 
-    def execute_update(self, query: str, params: Tuple = ()) -> int:
+    def execute_update(self, query: str, params: Tuple = (), auto_commit: bool = True) -> int:
         """
         Execute an INSERT, UPDATE, or DELETE query
 
         Args:
             query: SQL query string
             params: Query parameters tuple
+            auto_commit: Whether to commit after execution (default True)
 
         Returns:
             Number of affected rows or last row ID for INSERT
         """
         cursor = self.connection.cursor()
         cursor.execute(query, params)
-        self.connection.commit()
+        if auto_commit:
+            self.connection.commit()
         return cursor.lastrowid if cursor.lastrowid else cursor.rowcount
 
     def execute_many(self, query: str, params_list: List[Tuple]) -> int:
@@ -380,10 +383,10 @@ class DatabaseManager:
         query = "DELETE FROM companies WHERE id = ?"
         return self.execute_update(query, (company_id,))
 
-    def update_company_balance(self, company_id: int, amount: float) -> int:
+    def update_company_balance(self, company_id: int, amount: float, auto_commit: bool = True) -> int:
         """Update company balance by adding the specified amount"""
         query = "UPDATE companies SET balance = balance + ? WHERE id = ?"
-        return self.execute_update(query, (amount, company_id))
+        return self.execute_update(query, (amount, company_id), auto_commit)
 
     # ==================== User Operations ====================
 
@@ -449,10 +452,10 @@ class DatabaseManager:
         query = "DELETE FROM users WHERE id = ?"
         return self.execute_update(query, (user_id,))
 
-    def update_user_balance(self, user_id: int, amount: float) -> int:
+    def update_user_balance(self, user_id: int, amount: float, auto_commit: bool = True) -> int:
         """Update user balance by adding the specified amount"""
         query = "UPDATE users SET balance = balance + ? WHERE id = ?"
-        return self.execute_update(query, (amount, user_id))
+        return self.execute_update(query, (amount, user_id), auto_commit)
 
     # ==================== Transaction Operations ====================
 
@@ -482,11 +485,8 @@ class DatabaseManager:
         if from_type not in ['company', 'user'] or to_type not in ['company', 'user']:
             raise ValueError("Transaction type must be 'company' or 'user'")
 
-        # Start transaction
-        cursor = self.connection.cursor()
-
         try:
-            # Insert transaction
+            # Insert transaction (don't auto-commit)
             query = """
                 INSERT INTO transactions
                 (transaction_date, amount, from_type, from_id, to_type, to_id,
@@ -496,21 +496,23 @@ class DatabaseManager:
             transaction_id = self.execute_update(
                 query,
                 (transaction_date, amount, from_type, from_id, to_type, to_id,
-                 description, reference)
+                 description, reference),
+                auto_commit=False
             )
 
-            # Update sender balance (subtract)
+            # Update sender balance (subtract) - don't auto-commit
             if from_type == 'company':
-                self.update_company_balance(from_id, -amount)
+                self.update_company_balance(from_id, -amount, auto_commit=False)
             else:
-                self.update_user_balance(from_id, -amount)
+                self.update_user_balance(from_id, -amount, auto_commit=False)
 
-            # Update receiver balance (add)
+            # Update receiver balance (add) - don't auto-commit
             if to_type == 'company':
-                self.update_company_balance(to_id, amount)
+                self.update_company_balance(to_id, amount, auto_commit=False)
             else:
-                self.update_user_balance(to_id, amount)
+                self.update_user_balance(to_id, amount, auto_commit=False)
 
+            # Commit all changes atomically
             self.connection.commit()
             return transaction_id
 
@@ -537,12 +539,8 @@ class DatabaseManager:
         if entity_type not in ['company', 'user']:
             raise ValueError("Entity type must be 'company' or 'user'")
         
-        cursor = self.connection.cursor()
-        
         try:
-            # Create a transaction record for audit trail
-            # Use a special "from" to indicate external deposit
-            # We'll use from_type='cash' and from_id=0 to indicate cash deposit
+            # Create a transaction record for audit trail (don't auto-commit)
             query = """
                 INSERT INTO transactions
                 (transaction_date, amount, from_type, from_id, to_type, to_id,
@@ -552,18 +550,20 @@ class DatabaseManager:
             transaction_id = self.execute_update(
                 query,
                 (datetime.now().strftime('%d-%m-%Y'), amount, 'cash', 0, entity_type, entity_id,
-                 description, 'DEPOSIT')
+                 description, 'DEPOSIT'),
+                auto_commit=False
             )
-            
-            # Update balance
+
+            # Update balance (don't auto-commit)
             if entity_type == 'company':
-                self.update_company_balance(entity_id, amount)
+                self.update_company_balance(entity_id, amount, auto_commit=False)
             else:
-                self.update_user_balance(entity_id, amount)
-            
+                self.update_user_balance(entity_id, amount, auto_commit=False)
+
+            # Commit all changes atomically
             self.connection.commit()
             return transaction_id
-            
+
         except Exception as e:
             self.connection.rollback()
             raise Exception(f"Failed to deposit: {e}")
@@ -599,12 +599,8 @@ class DatabaseManager:
         if entity['balance'] < amount:
             raise Exception(f"Insufficient balance: {entity['balance']} < {amount}")
         
-        cursor = self.connection.cursor()
-        
         try:
-            # Create a transaction record for audit trail
-            # Use a special "to" to indicate external withdrawal
-            # We'll use to_type='cash' and to_id=0 to indicate cash withdrawal
+            # Create a transaction record for audit trail (don't auto-commit)
             query = """
                 INSERT INTO transactions
                 (transaction_date, amount, from_type, from_id, to_type, to_id,
@@ -614,18 +610,20 @@ class DatabaseManager:
             transaction_id = self.execute_update(
                 query,
                 (datetime.now().strftime('%d-%m-%Y'), amount, entity_type, entity_id, 'cash', 0,
-                 description, 'WITHDRAW')
+                 description, 'WITHDRAW'),
+                auto_commit=False
             )
-            
-            # Update balance
+
+            # Update balance (don't auto-commit)
             if entity_type == 'company':
-                self.update_company_balance(entity_id, -amount)
+                self.update_company_balance(entity_id, -amount, auto_commit=False)
             else:
-                self.update_user_balance(entity_id, -amount)
-            
+                self.update_user_balance(entity_id, -amount, auto_commit=False)
+
+            # Commit all changes atomically
             self.connection.commit()
             return transaction_id
-            
+
         except Exception as e:
             self.connection.rollback()
             raise Exception(f"Failed to withdraw: {e}")
@@ -674,9 +672,118 @@ class DatabaseManager:
             ORDER BY t.transaction_date DESC, t.created_date DESC
         """
         if limit:
-            query += f" LIMIT {limit}"
+            # Use parameterized query to prevent SQL injection
+            query += " LIMIT ?"
+            results = self.execute_query(query, (int(limit),))
+        else:
+            results = self.execute_query(query)
+        return [dict(row) for row in results]
 
-        results = self.execute_query(query)
+    def get_transactions_paginated(self, page: int = 1, per_page: int = 50) -> tuple[List[Dict[str, Any]], int]:
+        """
+        Get paginated transactions with total count
+
+        Args:
+            page: Page number (1-indexed)
+            per_page: Number of items per page
+
+        Returns:
+            Tuple of (transactions list, total count)
+        """
+        # Get total count
+        count_query = "SELECT COUNT(*) as count FROM transactions"
+        count_result = self.execute_query(count_query)
+        total_count = count_result[0]['count'] if count_result else 0
+
+        # Get paginated results
+        offset = (page - 1) * per_page
+        query = """
+            SELECT
+                t.*,
+                CASE
+                    WHEN t.from_type = 'company' THEN c1.name
+                    ELSE u1.name
+                END as from_name,
+                CASE
+                    WHEN t.to_type = 'company' THEN c2.name
+                    ELSE u2.name
+                END as to_name
+            FROM transactions t
+            LEFT JOIN companies c1 ON t.from_type = 'company' AND t.from_id = c1.id
+            LEFT JOIN users u1 ON t.from_type = 'user' AND t.from_id = u1.id
+            LEFT JOIN companies c2 ON t.to_type = 'company' AND t.to_id = c2.id
+            LEFT JOIN users u2 ON t.to_type = 'user' AND t.to_id = u2.id
+            ORDER BY t.transaction_date DESC, t.created_date DESC
+            LIMIT ? OFFSET ?
+        """
+        results = self.execute_query(query, (per_page, offset))
+        return [dict(row) for row in results], total_count
+
+    def get_transaction_count(self) -> int:
+        """Get total number of transactions"""
+        query = "SELECT COUNT(*) as count FROM transactions"
+        result = self.execute_query(query)
+        return result[0]['count'] if result else 0
+
+    def search_transactions(self, search_term: str, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        Search transactions by description, from/to names
+
+        Args:
+            search_term: Search string
+            limit: Maximum results to return
+
+        Returns:
+            List of matching transactions
+        """
+        query = """
+            SELECT
+                t.*,
+                CASE
+                    WHEN t.from_type = 'company' THEN c1.name
+                    ELSE u1.name
+                END as from_name,
+                CASE
+                    WHEN t.to_type = 'company' THEN c2.name
+                    ELSE u2.name
+                END as to_name
+            FROM transactions t
+            LEFT JOIN companies c1 ON t.from_type = 'company' AND t.from_id = c1.id
+            LEFT JOIN users u1 ON t.from_type = 'user' AND t.from_id = u1.id
+            LEFT JOIN companies c2 ON t.to_type = 'company' AND t.to_id = c2.id
+            LEFT JOIN users u2 ON t.to_type = 'user' AND t.to_id = u2.id
+            WHERE t.description LIKE ?
+               OR c1.name LIKE ?
+               OR u1.name LIKE ?
+               OR c2.name LIKE ?
+               OR u2.name LIKE ?
+            ORDER BY t.transaction_date DESC, t.created_date DESC
+            LIMIT ?
+        """
+        search_pattern = f"%{search_term}%"
+        results = self.execute_query(query, (search_pattern, search_pattern, search_pattern, search_pattern, search_pattern, limit))
+        return [dict(row) for row in results]
+
+    def search_companies(self, search_term: str) -> List[Dict[str, Any]]:
+        """Search companies by name, email, or phone"""
+        query = """
+            SELECT * FROM companies
+            WHERE name LIKE ? OR email LIKE ? OR phone LIKE ?
+            ORDER BY name
+        """
+        search_pattern = f"%{search_term}%"
+        results = self.execute_query(query, (search_pattern, search_pattern, search_pattern))
+        return [dict(row) for row in results]
+
+    def search_users(self, search_term: str) -> List[Dict[str, Any]]:
+        """Search users by name, email, or department"""
+        query = """
+            SELECT * FROM users
+            WHERE name LIKE ? OR email LIKE ? OR department LIKE ?
+            ORDER BY name
+        """
+        search_pattern = f"%{search_term}%"
+        results = self.execute_query(query, (search_pattern, search_pattern, search_pattern))
         return [dict(row) for row in results]
 
     def get_transactions_by_entity(self, entity_type: str, entity_id: int) -> List[Dict[str, Any]]:
@@ -794,22 +901,23 @@ class DatabaseManager:
             to_type = transaction['to_type']
             to_id = transaction['to_id']
 
-            # Reverse sender balance (add back)
+            # Reverse sender balance (add back) - don't auto-commit
             if from_type == 'company':
-                self.update_company_balance(from_id, amount)
-            else:
-                self.update_user_balance(from_id, amount)
+                self.update_company_balance(from_id, amount, auto_commit=False)
+            elif from_type == 'user':
+                self.update_user_balance(from_id, amount, auto_commit=False)
 
-            # Reverse receiver balance (subtract)
+            # Reverse receiver balance (subtract) - don't auto-commit
             if to_type == 'company':
-                self.update_company_balance(to_id, -amount)
-            else:
-                self.update_user_balance(to_id, -amount)
+                self.update_company_balance(to_id, -amount, auto_commit=False)
+            elif to_type == 'user':
+                self.update_user_balance(to_id, -amount, auto_commit=False)
 
-            # Delete transaction
+            # Delete transaction (don't auto-commit)
             query = "DELETE FROM transactions WHERE id = ?"
-            result = self.execute_update(query, (transaction_id,))
+            result = self.execute_update(query, (transaction_id,), auto_commit=False)
 
+            # Commit all changes atomically
             self.connection.commit()
             return result
 
@@ -954,3 +1062,136 @@ class DatabaseManager:
         params = (search_pattern,) * 6
         results = self.execute_query(query, params)
         return [dict(row) for row in results]
+
+    # ==================== Backup and Restore Operations ====================
+
+    def create_backup(self, backup_path: str = None) -> str:
+        """
+        Create a backup of the database
+
+        Args:
+            backup_path: Optional custom backup path. If None, creates in same directory.
+
+        Returns:
+            Path to the backup file
+        """
+        if backup_path is None:
+            # Create backup in same directory with timestamp
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            backup_dir = os.path.dirname(self.db_path)
+            backup_path = os.path.join(backup_dir, f'backup_{timestamp}.db')
+
+        # Ensure backup directory exists
+        os.makedirs(os.path.dirname(backup_path), exist_ok=True)
+
+        # Close connection temporarily for safe copy
+        self.connection.commit()
+
+        try:
+            # Use SQLite backup API for consistency
+            backup_conn = sqlite3.connect(backup_path)
+            self.connection.backup(backup_conn)
+            backup_conn.close()
+
+            return backup_path
+
+        except Exception as e:
+            raise Exception(f"Failed to create backup: {e}")
+
+    def restore_from_backup(self, backup_path: str) -> bool:
+        """
+        Restore database from a backup file
+
+        Args:
+            backup_path: Path to the backup file
+
+        Returns:
+            True if restore successful
+        """
+        if not os.path.exists(backup_path):
+            raise FileNotFoundError(f"Backup file not found: {backup_path}")
+
+        # Verify it's a valid SQLite database
+        try:
+            test_conn = sqlite3.connect(backup_path)
+            test_conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            test_conn.close()
+        except sqlite3.Error as e:
+            raise Exception(f"Invalid backup file: {e}")
+
+        try:
+            # Close current connection
+            self.close()
+
+            # Create backup of current database before restore
+            current_backup = self.db_path + '.pre_restore'
+            if os.path.exists(self.db_path):
+                shutil.copy2(self.db_path, current_backup)
+
+            # Copy backup to database location
+            shutil.copy2(backup_path, self.db_path)
+
+            # Reconnect
+            self.connect()
+
+            # Remove pre-restore backup on success
+            if os.path.exists(current_backup):
+                os.remove(current_backup)
+
+            return True
+
+        except Exception as e:
+            # Attempt to restore from pre-restore backup
+            if os.path.exists(current_backup):
+                shutil.copy2(current_backup, self.db_path)
+                self.connect()
+            raise Exception(f"Failed to restore from backup: {e}")
+
+    def get_backup_list(self, backup_dir: str = None) -> List[Dict[str, Any]]:
+        """
+        Get list of available backups
+
+        Args:
+            backup_dir: Directory to search for backups. Defaults to database directory.
+
+        Returns:
+            List of backup info dictionaries
+        """
+        if backup_dir is None:
+            backup_dir = os.path.dirname(self.db_path)
+
+        backups = []
+        for filename in os.listdir(backup_dir):
+            if filename.startswith('backup_') and filename.endswith('.db'):
+                filepath = os.path.join(backup_dir, filename)
+                stat = os.stat(filepath)
+                backups.append({
+                    'filename': filename,
+                    'path': filepath,
+                    'size': stat.st_size,
+                    'created': datetime.fromtimestamp(stat.st_mtime).strftime('%d-%m-%Y %H:%M:%S')
+                })
+
+        # Sort by creation date (newest first)
+        backups.sort(key=lambda x: x['created'], reverse=True)
+        return backups
+
+    def delete_backup(self, backup_path: str) -> bool:
+        """
+        Delete a backup file
+
+        Args:
+            backup_path: Path to the backup file
+
+        Returns:
+            True if deletion successful
+        """
+        if not os.path.exists(backup_path):
+            raise FileNotFoundError(f"Backup file not found: {backup_path}")
+
+        # Safety check - don't delete the active database
+        if os.path.abspath(backup_path) == os.path.abspath(self.db_path):
+            raise Exception("Cannot delete the active database")
+
+        os.remove(backup_path)
+        return True

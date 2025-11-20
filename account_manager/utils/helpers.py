@@ -5,6 +5,83 @@ Helper Functions - Utility functions for the application
 from datetime import datetime
 from typing import Union, Callable, Optional, List
 import customtkinter as ctk
+from tkinter import messagebox
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger('AccountManager')
+
+
+def handle_error(error: Exception, user_message: str = None, show_dialog: bool = True) -> str:
+    """
+    Handle errors with user-friendly messages and logging
+
+    Args:
+        error: The exception that occurred
+        user_message: Custom message to show user (optional)
+        show_dialog: Whether to show error dialog
+
+    Returns:
+        User-friendly error message
+    """
+    # Log the technical error
+    logger.error(f"Error: {error}", exc_info=True)
+
+    # Map common errors to user-friendly messages
+    error_messages = {
+        'UNIQUE constraint failed': "This item already exists. Please use a different name.",
+        'FOREIGN KEY constraint failed': "Cannot delete this item because it is referenced by other records.",
+        'NOT NULL constraint failed': "Please fill in all required fields.",
+        'CHECK constraint failed': "Invalid value provided. Please check your input.",
+        'no such table': "Database error. Please restart the application.",
+        'database is locked': "Database is busy. Please try again in a moment.",
+        'Insufficient balance': "Insufficient balance for this operation.",
+        'not found': "The requested item was not found.",
+    }
+
+    error_str = str(error)
+
+    # Find matching error message
+    friendly_message = user_message
+    if not friendly_message:
+        for key, message in error_messages.items():
+            if key.lower() in error_str.lower():
+                friendly_message = message
+                break
+
+    # Default message if no match
+    if not friendly_message:
+        friendly_message = "An unexpected error occurred. Please try again."
+
+    # Show dialog if requested
+    if show_dialog:
+        messagebox.showerror("Error", friendly_message)
+
+    return friendly_message
+
+
+def show_success(message: str, title: str = "Success"):
+    """Show success message dialog"""
+    messagebox.showinfo(title, message)
+
+
+def show_warning(message: str, title: str = "Warning"):
+    """Show warning message dialog"""
+    messagebox.showwarning(title, message)
+
+
+def confirm_action(message: str, title: str = "Confirm") -> bool:
+    """
+    Show confirmation dialog
+
+    Returns:
+        True if user confirms, False otherwise
+    """
+    return messagebox.askyesno(title, message)
 
 
 def format_currency(amount: float) -> str:
@@ -144,6 +221,98 @@ def normalize_date_for_sort(date_str: str) -> str:
     return date_str
 
 
+def sanitize_string(text: str, max_length: int = 500) -> str:
+    """
+    Sanitize a string input by removing dangerous characters and limiting length
+
+    Args:
+        text: Input text to sanitize
+        max_length: Maximum allowed length
+
+    Returns:
+        Sanitized string
+    """
+    if not text:
+        return ""
+
+    # Convert to string if not already
+    text = str(text).strip()
+
+    # Remove null bytes and control characters (except newlines and tabs)
+    import re
+    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+
+    # Limit length
+    if len(text) > max_length:
+        text = text[:max_length]
+
+    return text
+
+
+def validate_name(name: str) -> tuple[bool, str]:
+    """
+    Validate and sanitize a name field (company name, user name)
+
+    Args:
+        name: Name to validate
+
+    Returns:
+        Tuple of (is_valid, sanitized_name or error_message)
+    """
+    if not name:
+        return False, "Name cannot be empty"
+
+    sanitized = sanitize_string(name, max_length=100)
+
+    if len(sanitized) < 1:
+        return False, "Name is too short"
+
+    if len(sanitized) > 100:
+        return False, "Name is too long (max 100 characters)"
+
+    return True, sanitized
+
+
+def validate_description(description: str) -> tuple[bool, str]:
+    """
+    Validate and sanitize a description field
+
+    Args:
+        description: Description to validate
+
+    Returns:
+        Tuple of (is_valid, sanitized_description)
+    """
+    sanitized = sanitize_string(description, max_length=500)
+    return True, sanitized
+
+
+def validate_date_input(date_str: str) -> tuple[bool, str]:
+    """
+    Validate a date string in DD-MM-YYYY format
+
+    Args:
+        date_str: Date string to validate
+
+    Returns:
+        Tuple of (is_valid, error_message or empty string)
+    """
+    if not date_str:
+        return False, "Date is required"
+
+    import re
+    # Check format DD-MM-YYYY
+    if not re.match(r'^\d{2}-\d{2}-\d{4}$', date_str):
+        return False, "Date must be in DD-MM-YYYY format"
+
+    try:
+        day, month, year = map(int, date_str.split('-'))
+        datetime(year, month, day)
+        return True, ""
+    except ValueError:
+        return False, "Invalid date"
+
+
 def validate_email(email: str) -> bool:
     """
     Simple email validation
@@ -155,6 +324,8 @@ def validate_email(email: str) -> bool:
         True if valid, False otherwise
     """
     import re
+    if not email:
+        return True  # Email is optional
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return bool(re.match(pattern, email))
 
